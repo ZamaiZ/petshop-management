@@ -1,179 +1,79 @@
-# Petshop — Plano de implementação
+# Petshop — plano atualizado e revisão de implementação
 
-> **Para quem implementar:** seguir as etapas na ordem deste documento usando `superpowers:executing-plans`.
+**Atualizado em:** 21/10/2026  
+**Objetivo:** sistema de gestão para uma loja, com Supabase como fonte de verdade e interface baseada nos componentes shadcn locais sobre Base UI.
 
-**Objetivo:** transformar o projeto Next.js existente em um sistema de gestão para pet shop que siga as telas de referência e use o Supabase como fonte de verdade.
+## Evidências e decisões confirmadas
 
-**Arquitetura:** manter o App Router e os componentes shadcn/Base UI já presentes. Separar shell, módulos de domínio, acesso a dados e regras transacionais; consultas protegidas usam Supabase SSR e as mutações financeiras/estoque usam RPCs atômicas com RLS no banco.
+O pacote `petshop-implementation/` contém a especificação funcional, a referência navegável estática, 21 capturas, migrations-base, consultas SQL e um relatório de validação limitado. A referência estática usa dados de demonstração e `localStorage`; ela orienta aparência e navegação, mas não é fonte de regras nem de dados de produção.
 
-**Stack:** Next.js 16.4.2, React 19.3, TypeScript, Tailwind 4, componentes shadcn locais sobre Base UI, React Hook Form, Zod, TanStack Table, Recharts, React Icons e Supabase. Motion e uma biblioteca de arraste ainda precisam ser adicionados; confirmar versões compatíveis no início da implementação.
+Decisões informadas pelo usuário:
 
-**Especificação:** `petshop-implementation/spec.md`, com evidências em `petshop-implementation/screenshots/`, `petshop-implementation/reference-site/`, `petshop-implementation/supabase/`, `petshop-implementation/sql/` e `petshop-implementation/docs/`.
+- O projeto Supabase existe e está vazio; a única função existente é `rls_auto_enable`. A função, sozinha, não prova que há um event trigger registrado e ativo. As migrations do app habilitam RLS explicitamente.
+- A agenda oferece horários em intervalos de 30 minutos. A duração do serviço define o fim do atendimento e o banco impede sobreposição entre horários ativos.
+- Produtos controlados por validade são contados por lote.
+- Dinheiro exige sessão de caixa aberta. O caixa pode começar sem fundo; pagamento exato funciona sem saldo para troco, e outras modalidades continuam disponíveis. Pix e cartão não movimentam o dinheiro físico.
 
-## Restrições globais
+## Arquitetura presente
 
-- Preservar Next.js 16, React 19 e o lockfile pnpm existente.
-- Usar os componentes shadcn locais em toda nova interface; adaptar suas variantes e tokens para as capturas, sem trocar a biblioteca visual.
-- Não usar os dados ou regras persistidos em `localStorage` pelo site estático como dados de produção.
-- Dinheiro fica em centavos inteiros no banco; quantidade usa precisão explícita; estoque é derivado do ledger.
-- Cada consulta e mutação deve validar vínculo com a loja. Operações compostas ficam em uma RPC única e mantêm RLS.
-- Não incluir emissão fiscal, integração com SEFAZ, cobrança Pix/cartão ou mensagens de WhatsApp.
-- As instruções do projeto proíbem executar `git`, `typecheck`, `build`, `lint` e `test`; não executar testes. A revisão final deste escopo fica limitada à inspeção de código/SQL e à conferência visual manual autorizada.
+- App Router do Next 16.4.2, React 19.3 e Tailwind 4.
+- Shell, tabelas, diálogos, abas, inputs e demais controles usam componentes locais de `src/components/ui/` (Base UI/shadcn). A Data Table usa TanStack Table.
+- Server Components carregam dados; `src/features/<domínio>/queries.ts` concentra consultas e `actions.ts` concentra mutações autenticadas. Operações compostas usam RPC transacional no PostgreSQL.
+- Clientes Supabase separados para browser, SSR e operações administrativas; `src/proxy.ts` atualiza sessão e protege rotas. A autorização é conferida novamente nas ações e RPCs.
+- Realtime usa canal por loja/usuário e atualiza os Server Components afetados.
+- Tipos manuais do banco ficam em `src/types/database.generated.ts`; devem ser regenerados após aplicar o schema final em ambiente identificado.
 
-## Estado encontrado
+## Escopo já implementado no workspace
 
-- `src/app/page.tsx` e `src/app/layout.tsx` ainda são o starter do Next, com metadados em inglês; não há rotas de produto, domínio, autenticação ou integração Supabase.
-- `src/app/globals.css` já tem tokens shadcn claros/escuros, Tailwind 4 e Inter, mas ainda mantém valores do starter. O token escuro da sidebar usa azul, divergindo do padrão monocromático da referência.
-- Há mais de 50 componentes locais em `src/components/ui/`, incluindo Button, Sidebar, Sheet, Dialog, Tooltip, Combobox, Calendar, Skeleton, Toast e Table. São wrappers de Base UI e devem ser preservados. `Table` é só a primitiva visual; `@tanstack/react-table` já está instalado para a Data Table.
-- Já estão instalados React Hook Form, Zod, Recharts e React Icons. `@supabase/supabase-js`, `@supabase/ssr`, Motion e DnD não aparecem no `package.json`.
-- `petshop-implementation/` contém 21 capturas, uma galeria e uma referência navegável. O JavaScript da referência usa dados de demonstração e `localStorage`; cadastro, pagamentos, estoque e mudanças de status são simulações locais.
-- As cinco migrations modelam as entidades principais, RLS, Realtime, Storage privado, gate de cadastro e operações iniciais. Elas estão dentro do pacote de evidências, não em `supabase/migrations/` na raiz do app; não há `supabase/config.toml`, tipos gerados ou variáveis de ambiente na raiz.
-- `petshop-implementation/docs/validation.md` relata parsing PostgreSQL e um harness PGlite para alguns fluxos. O próprio relatório limita essa evidência: não valida o Supabase hospedado, Auth real, concorrência, Storage, Realtime ou todos os contratos do spec. Não reexecutei esse harness por causa da regra do projeto.
-- Informação do usuário: o projeto Supabase remoto existe, mas está vazio; a única função preexistente é `rls_auto_enable`. Ela ativa RLS em tabelas novas no schema `public`, mas não cria policies ou grants. Confirmar no catálogo se há um event trigger ativo associado à função antes das migrations; a função isolada não dispara sozinha.
-- Decisões do usuário: a agenda oferece horários em intervalos de 30 minutos, sem dois atendimentos no mesmo horário; contagens de produtos com validade serão feitas por lote. O modelo de profissionais fica fora do escopo inicial.
+- **Acesso:** login, cadastro com gate de autorização, recuperação e redefinição de senha.
+- **Shell e dashboard:** navegação autenticada, tema, preferências da sidebar, indicadores agregados no servidor, gráfico e vendas recentes.
+- **Clientes:** clientes, pets, endereços, perfil e vendas recentes.
+- **Estoque:** produtos e categorias, embalagens com barcode, edição e arquivamento, recebimento multi-item, fornecedor, custo médio, lotes/validade, FEFO, ajuste auditável, contagem versionada por lote e conversão de produto fechado para granel.
+- **PDV e vendas:** scanner HID, busca por código/SKU/nome, embalagens, itens pesáveis, serviços e agendamentos, desconto, pagamentos divididos, fiado, entrega, detalhe, cancelamento e devolução com rateio e trilha de auditoria.
+- **Financeiro:** abertura/fechamento do caixa, total contado manualmente ou por denominações, diferença com justificativa validada no banco, reforço/retirada, contas a receber e a pagar, pagamentos parciais e despesas. Há CSV separado para vendas, recebimentos, despesas pagas e saldos em aberto, com período em timezone da loja e proteção contra formula injection.
+- **Agenda:** horários de 30 em 30 minutos, duração e preço do serviço, vínculo tutor/pet, conflitos de sobreposição, reagendamento versionado, transições auditáveis e vínculo com venda.
+- **Entregas:** quatro etapas, histórico, cancelamento separado da venda, controle de versão e alternativa por teclado/toque ao arraste.
+- **Configurações:** perfil, timezone brasileiro, serviços, fornecedores e logo em Storage privado.
 
-## Lacunas e riscos que alteram a implementação
+## Banco de dados versionado
 
-1. O spec pede uma contagem de estoque atômica, FEFO entre lotes, conversão de pacote fechado para granel, vínculo de banho/tosa com uma venda, reagendamento versionado, cancelamento e devolução com rateio e trilha de auditoria. As migrations atuais não fornecem essas operações.
-2. Os RPCs usam chaves de idempotência, mas não comparam a impressão digital do payload; uma mesma chave com dados diferentes pode devolver o resultado anterior. `close_cash` também não tem chave de idempotência, então uma repetição depois de um fechamento confirmado falha em vez de recuperar o resultado.
-3. `complete_sale` exige um caixa aberto antes de verificar os pagamentos. Isso bloqueia também vendas integralmente por Pix/cartão sem caixa aberto; o spec só exige caixa para movimentações em dinheiro. Confirmar a regra antes de corrigir.
-4. `move_delivery` aceita o status recebido sem validar a sequência permitida. `set_appointment_status` aceita qualquer status da constraint, sem validar transições ou exigir motivo para cancelar/falta. Completar validações e auditoria no banco.
-5. Os códigos de barras são únicos dentro de cada tabela, mas não há garantia de unicidade entre `products` e `product_packagings`.
-6. `inventory_count_items` guarda saldo agregado por produto, sem lote. Como as contagens serão por lote, a migration complementar precisa incluir lote nas linhas, preservar a versão agregada para detectar movimentações concorrentes e só então aplicar ajustes.
-7. A agenda não precisa de profissionais no escopo inicial. Os intervalos disponíveis começam a cada 30 minutos; o RPC deve impedir sobreposição conforme a duração do serviço para que dois atendimentos não fiquem ativos ao mesmo tempo.
-8. Regra de caixa confirmada: Pix/cartão não dependem do saldo físico; dinheiro exige sessão aberta; com saldo zero, só aceitar pagamento exato; troco exige saldo físico suficiente. O spec pede validação de segurança, concorrência, dinheiro, RLS e visual como critérios de aceite, mas as regras locais proíbem testes e também build/lint/typecheck; sem outra forma permitida de validação, não será possível declarar esses critérios verificados.
+`supabase/migrations/20261021000100_schema.sql` a `20261021000500_operations.sql` são a base do domínio e das operações iniciais. As migrations `006` a `009` complementam hardening, dashboard, operações versionadas, devoluções e reembolsos, idempotência, catálogo, embalagens, conversão para granel e métricas líquidas.
 
-## Arquitetura de arquivos proposta
+As tabelas têm escopo por `store_id`; policies, grants e RPCs restringem acesso ao tenant. Storage usa bucket privado para logos. As tabelas operacionais são publicadas em Realtime; segredos e dados de rate limit ficam fora da publicação.
 
-```text
-src/app/
-  layout.tsx, globals.css
-  (auth)/login/page.tsx
-  (auth)/cadastro/page.tsx
-  (auth)/recuperar-senha/page.tsx
-  (auth)/redefinir-senha/page.tsx
-  (workspace)/layout.tsx
-  (workspace)/dashboard/page.tsx
-  (workspace)/vendas/page.tsx
-  (workspace)/vendas/nova/page.tsx
-  (workspace)/estoque/page.tsx
-  (workspace)/agenda/page.tsx
-  (workspace)/entregas/page.tsx
-  (workspace)/clientes/page.tsx
-  (workspace)/financeiro/page.tsx
-  (workspace)/configuracoes/page.tsx
-src/components/layout/       # shell, header, sidebar, conta e providers
-src/components/data-table/   # tabela TanStack e toolbar reutilizáveis
-src/features/<dominio>/      # components, schemas, queries, actions, repository
-src/lib/supabase/            # browser, server, admin server-only
-src/lib/                     # dinheiro, quantidade, data, erros, idempotência
-src/proxy.ts                 # atualização de cookies conforme Next 16/Supabase SSR
-src/types/database.generated.ts
-supabase/config.toml
-supabase/migrations/         # cópias operacionais + migrations incrementais
-.env.example
-```
+O usuário informa que executou todas as migrations no Supabase. Essa aplicação não foi consultada remotamente nesta revisão; portanto, ainda falta confirmar o estado real das migrations, policies, grants, Storage, Realtime e do event trigger `rls_auto_enable` no projeto alvo. Não duplicar essa função. A migration 002 habilita RLS de forma explícita, mas isso não substitui a revisão de policies e grants.
 
-As páginas de domínio ficam como Server Components sempre que possível. Componentes client ficam restritos a interação, formulários e Realtime. Uma DAL server-only verifica sessão e vínculo perto de cada fonte de dados e ação; `proxy.ts` trata atualização de sessão/cookies, não substitui essa autorização. A loja autenticada alimenta o shell e não é um texto fixo do mockup.
+## Revisão visual e limites de validação
 
-## Foco da revisão final
+O preview local abriu a tela de login. Sua estrutura e hierarquia correspondem à captura `11-login.png`; a captura fornecida está no tema claro e o preview respeitou o tema escuro do sistema. `.env.local` existe e as variáveis necessárias ao cadastro estão preenchidas; os valores não foram lidos nem validados nesta revisão. Ainda não há sessão autenticada e conjunto de dados para cotejar visualmente as rotas internas com as capturas.
 
-- Troca de IDs entre lojas, inclusive em RPC, Storage e canal Realtime.
-- Repetição de uma mutação após timeout e reutilização da mesma chave com payload diferente.
-- Venda da última unidade concorrendo com outra venda ou com fechamento do caixa.
-- Quantidade pesada, desconto em centavos, troco, lote vencido e datas no timezone da loja.
-- Uso por teclado/móvel, foco em diálogos, filtros de tabela, skeleton, vazio e erro recuperável.
+As regras locais proíbem `git`, `build`, `lint`, `typecheck` e `test`, e determinam que não se trabalhe com testes. Esses comandos não foram executados. O preview de desenvolvimento não verifica segurança, concorrência, migrations ou contratos financeiros; nada disso está declarado como aprovado.
 
-Esses pontos serão inspecionados nos contratos SQL e percorridos manualmente na interface. Não haverá execução de testes automatizados conforme a instrução local.
+## Incidentes reportados em 21/10/2026
 
-## Etapas
+| Prioridade | Sintoma | Causa confirmada | Ação e estado |
+| --- | --- | --- | --- |
+| P0 | `/vendas` e `/agenda` mostram `unstable value Date.now()` no `WorkspaceLayout`. | A verificação de expiração do Supabase Auth (`auth-js`) lê o relógio enquanto o segmento autenticado passa pela prerenderização do Next com Cache Components. O layout já tinha `<Suspense>`, mas faltava suspender explicitamente antes de inicializar a sessão. | Adicionado `await io()` no componente autenticado, antes de `requireUserContext()`, mantendo o conteúdo dentro do `<Suspense>`. Alteração local, sem validação em runtime. |
+| P0 | `/vendas` lança `table.getState is not a function`; as listagens compartilhadas também poderiam falhar. | O projeto instala TanStack Table 9.3.1, mas a DataTable ainda lia o estado pela API v8. `getState()` foi removido no v9. | Busca e paginação agora leem `table.state`. Alteração local, sem validação em runtime. |
+| P0 | O shell falha com `MenuGroupContext is missing` ao renderizar `DropdownMenuLabel`. | Rótulos de notificação e da conta eram renderizados fora do contexto de grupo exigido pelo Base UI. | Os rótulos e itens foram colocados dentro de `DropdownMenuGroup`; o rótulo de tema permanece dentro do `DropdownMenuRadioGroup`. Implementação presente, sem validação em runtime. |
+| P1 | Dashboard mostra aviso do Base UI sobre `nativeButton` e links renderizados como botões. | `Button` (elemento `<button>`) era usado para navegação com `render={<Link>}` ou `render={<a>}`, confundindo semântica de botão e link. | Criado `ButtonLink` com os mesmos estilos shadcn para navegação real por link; exportação usa `<a>` estilizado. Alteração local, sem validação em runtime. |
+| P0 | Dashboard e indicadores de vendas retornam erro genérico. | Ambos chamam `dashboard_overview`. A migration 006 usa `generate_series(..., interval '1 day')`, que retorna timestamp; somar/subtrair inteiros desse valor falha no PostgreSQL. | A migration `20261021001000_fix_dashboard_overview_chart_date_math.sql` já corrige os offsets para aritmética de `date`. Está no workspace; não há confirmação de aplicação no Supabase. Aplicá-la é pré-requisito para os indicadores. |
 
-### Etapa 1 — fechar as decisões de dados e criar a base Supabase
+As regras locais impedem executar testes, build, lint e typecheck. Por isso, as duas correções TypeScript acima estão registradas como aplicadas, mas ainda não como verificadas no navegador. A migration 010 também não foi aplicada nem consultada remotamente nesta revisão.
 
-**Arquivos:** criar `supabase/config.toml`, `.env.example`, `supabase/migrations/` e `src/types/database.generated.ts`. Como o projeto Supabase existente está vazio, usar as cinco migrations entregues como base operacional sem alterar as evidências, após conferir o event trigger `rls_auto_enable` e confirmar que a função está no schema esperado. Não criar uma segunda trigger com o mesmo objetivo.
+## Pendências antes de usar com dados reais
 
-- Confirmado que o Supabase existe e está vazio. Antes de aplicar a base, verificar `pg_event_trigger` para saber se `rls_auto_enable` está associado/ativo; a migration 002 também habilita RLS explicitamente. Usar staging/local para a integração inicial e não publicar migrations sem identificar o alvo.
-- Revisar e complementar os RPCs em migrations novas: validação de transição de status, vínculo de agendamento, gestão dos lotes FEFO, contagem de inventário, conversão para granel, cancelamento/devolução e idempotência com fingerprint.
-- Garantir grants, RLS, FKs compostas, Realtime e índices para toda tabela nova. Criar rastreabilidade de reembolso/alocação e eventos de auditoria sem apagar pagamentos originais.
-- Corrigir a unicidade de barcode entre produto e embalagem, com proteção de concorrência no banco.
-- Gerar os tipos somente depois do schema final. Não colocar chave secreta nos arquivos públicos nem no bundle.
+1. Definir a senha de autorização com `sql/alterar-senha-cadastro.sql` e usar exatamente o mesmo valor no formulário. O arquivo chama a função de hash já criada pela migration; não altera senhas de contas existentes.
+2. Confirmar no projeto Supabase alvo o estado das migrations, policies, grants, Storage, Realtime e do event trigger `rls_auto_enable`; fazer backup antes de qualquer ajuste remoto.
+3. Criar uma loja e dados de demonstração em local/staging para cotejar cada rota e estado com as capturas e conferir teclado, móvel, loading, vazio e erro.
+4. Migrar listagens ainda limitadas por `limit()` para paginação server-side e persistir filtros/abas de vendas e financeiro na URL. A DataTable pagina apenas os dados carregados: histórico de vendas está limitado a 200; clientes, produtos, agenda e movimentos têm outros tetos (250–1000), que podem ocultar registros sem indicar que há mais páginas.
+5. Reconciliar a interface interna contra as capturas. A revisão visual realizada até agora cobre a tela pública de acesso, não todas as 21 imagens.
 
-**Resultado verificável:** migrations operacionais versionadas na raiz, contratos transacionais fechados e tipos coerentes com o schema. Nenhuma migration remota é aplicada sem identificar o banco alvo e o estado existente.
+## Próxima ordem de trabalho
 
-### Etapa 2 — clientes Supabase, sessão e autenticação
-
-**Arquivos:** `src/lib/supabase/{browser,server,admin}.ts`, `src/lib/auth/verify-session.ts`, `src/proxy.ts`, `src/features/auth/{schemas,actions,repository}.ts`, rotas em `src/app/(auth)/` e ajustes em `src/app/layout.tsx`.
-
-- Adicionar `@supabase/supabase-js` e `@supabase/ssr`; manter o cliente admin server-only com a chave secreta.
-- Implementar login, logout, cadastro com senha pessoal e gate de autorização, recuperação e redefinição. O Route Handler/ação valida origem, tamanho, rate limit por e-mail/IP confiável e payload antes do Admin API.
-- Seguir os guias instalados em `node_modules/next/dist/docs/` para Next 16: `authentication.md`, `16-proxy.md`, `15-route-handlers.md` e `cookies.md`. Fazer verificação de autorização na DAL e nas RPCs, além do proxy.
-- Manter mensagens genéricas de recuperação e nunca registrar senha, ticket, cookie ou chave.
-
-**Resultado verificável:** as rotas de autenticação substituem o mock e o usuário autorizado chega ao workspace com sessão SSR.
-
-### Etapa 3 — shell, tokens e fidelidade visual
-
-**Arquivos:** `src/app/layout.tsx`, `src/app/globals.css`, `src/app/(workspace)/layout.tsx`, `src/components/layout/*`, provider de tema e `loading.tsx` das rotas.
-
-- Corrigir idioma, título, descrição e fontes; retirar a composição de fontes duplicada do starter e alinhar tokens claros/escuros à referência.
-- Compor Sidebar, Sheet, TooltipProvider, DropdownMenu, Breadcrumb e Button locais. Ajustar a sidebar aos 224/74 px, header de 72 px, espaçamento, raio e densidade das capturas. Implementar nome/logo dinâmicos da loja.
-- Persistir preferências de tema e sidebar em `user_preferences`, respeitar sistema, Ctrl+B, Ctrl+Alt+T e hidratação sem flash. O estado de tema e sidebar não vai para `localStorage`.
-- Adicionar Motion com `prefers-reduced-motion`; skeletons próprios por página e aba, estados de vazio/erro e foco acessível. Criar layouts responsivos sem overflow horizontal global.
-
-**Resultado verificável:** shell, tema claro/escuro, sidebar e autenticação visualmente alinhados às capturas de referência.
-
-### Etapa 4 — cadastros, clientes e estoque
-
-**Arquivos:** `src/features/catalog/*`, `src/features/customers/*`, `src/features/inventory/*`, `src/app/(workspace)/estoque/page.tsx`, `clientes/page.tsx`, além de diálogos de recebimento e contagem.
-
-- Implementar cadastros de categorias, produtos, embalagens, fornecedores e serviços com arquivamento; clientes com endereços e vários pets.
-- Criar Data Tables TanStack com filtros/paginação server-side, toolbar e ações usando primitivas shadcn.
-- Implementar consulta de barcode sem remover zeros iniciais, recebimento multi-item, lotes/validade, ledger, ajuste auditável, contagem versionada e conversão para granel.
-- Aplicar FEFO no servidor e bloquear lotes vencidos. Fazer contagem por lote para produtos rastreados e agregada para produtos sem lote; guardar a versão do saldo para detectar mudanças durante a contagem.
-
-**Resultado verificável:** cadastro, recebimento, ajuste e contagem persistem por RPC/queries do tenant e atualizam saldo pelo ledger.
-
-### Etapa 5 — PDV, vendas e financeiro
-
-**Arquivos:** `src/features/sales/*`, `src/features/finance/*`, `src/app/(workspace)/vendas/*` e `financeiro/page.tsx`.
-
-- Criar busca/Combobox de produto e cliente, suporte a scanner HID, carrinho, peso, serviços, desconto, taxa de entrega, pagamento dividido, troco e fiado.
-- Enviar somente IDs, quantidades e escolhas explícitas ao RPC. O banco calcula preço, total, estoque, pagamentos, recebível e delivery atomicamente; preservar carrinho até confirmação.
-- Implementar caixa, contagem por denominações, diferença auditável, reforço/retirada, recebimentos parciais, contas a pagar e despesas com pagamentos parciais. Regra confirmada: dinheiro exige sessão aberta; com saldo físico zero, aceitar somente valor exato; exigir saldo suficiente para dar troco. Pix/cartão independem do saldo físico e não alteram o caixa.
-- Construir detalhes de venda e ações de cancelamento/devolução somente após as RPCs estarem disponíveis; calcular rateio de desconto em centavos e manter eventos imutáveis.
-
-**Resultado verificável:** fluxos financeiros usam uma transação por operação e representam separado valor vendido, recebido, pendente e dinheiro físico.
-
-### Etapa 6 — agenda e entregas
-
-**Arquivos:** `src/features/appointments/*`, `src/features/deliveries/*`, `src/app/(workspace)/agenda/page.tsx`, `entregas/page.tsx`.
-
-- Fazer calendário navegável por data real/timezone da loja, lista de atendimentos, tutor/pet/serviço, edição e reagendamento versionado.
-- Vincular serviço a uma venda uma única vez; registrar faltas/cancelamentos com motivo e controlar conflitos pelo modelo de capacidade decidido.
-- Fazer Kanban nas quatro etapas, usando uma biblioteca DnD compatível com React instalado, DragOverlay e alternativa por teclado/menu. Atualizar com versão esperada e rollback em conflito.
-- Manter pagamento independente do status da entrega e registrar recebimento na entrega sobre o mesmo saldo da venda.
-
-**Resultado verificável:** agenda e Kanban refletem estados persistidos, conflitos e pagamento sem simulações locais.
-
-### Etapa 7 — dashboard, configurações, Storage e Realtime
-
-**Arquivos:** `src/features/dashboard/*`, `src/features/settings/*`, `src/components/providers/realtime-provider.tsx`, `src/app/(workspace)/dashboard/page.tsx`, `configuracoes/page.tsx`, endpoints de exportação.
-
-- Criar agregações server-side para as quatro métricas, gráfico, pendências e vendas recentes, respeitando timezone e definições do spec.
-- Implementar perfil da loja, upload privado de logo com validação de arquivo, troca atômica de referência e limpeza de órfãos; manter o arquivo anterior em caso de falha.
-- Exportar períodos completos em CSV UTF-8 com mitigação de formula injection.
-- Manter um canal Realtime por sessão/loja, invalidar somente consultas afetadas, reconciliar após reconexão e limpar dados/canais no logout.
-
-**Resultado verificável:** números deixam de ser dados de demonstração e mudanças da loja aparecem sem vazamento entre tenants.
-
-### Etapa 8 — reconciliação visual e revisão operacional
-
-- Percorrer as 21 capturas e os estados da galeria lado a lado com cada rota real; corrigir hierarquia, espaçamento, ícones, alinhamentos, densidade e temas.
-- Conferir manualmente foco/teclado, tooltips, diálogos, tabelas, loading, erro, vazio e viewport móvel.
-- Revisar policies/grants, funções `SECURITY DEFINER`, variáveis e caminhos de Storage; consultar `sql/verificar-seguranca.sql` no ambiente identificado.
-- Registrar no plano quais critérios não foram exercitados. Como a regra local proíbe testes e comandos de verificação automatizada, não declarar segurança, concorrência ou critério de aceite verificado com base apenas em parsing ou aparência.
-
-## Ponto para fechar antes do fluxo de caixa
-
-- Regra confirmada: Pix/cartão independem do saldo físico; pagamento em espécie exige sessão aberta; com saldo zero, só aceitar valor exato; para dar troco, o saldo físico precisa cobrir a devolução. A entrada no caixa continua sendo o valor líquido da venda.
-
+1. Aplicar a migration 010 no projeto Supabase que atende o app; ela não estava entre as migrations 001–009 que o usuário informou ter executado. Depois, observar dashboard e indicadores de vendas durante o uso normal.
+2. Com o servidor de desenvolvimento reiniciado, abrir `/vendas`, `/agenda` e as demais páginas com DataTable para confirmar se os dois erros de runtime deixaram de aparecer; a restrição atual não permite usar build, lint, typecheck ou testes como validação.
+3. Confirmar no ambiente Supabase alvo o histórico 001–010, policies/grants, Storage privado, Realtime e o event trigger `rls_auto_enable`, sem alterar o remoto às cegas.
+4. Definir a senha de autorização com `sql/alterar-senha-cadastro.sql` e usar exatamente o mesmo valor no formulário; o arquivo chama a função de hash já criada pela migration e não altera senhas de contas existentes.
+5. Criar uma loja com dados controlados em local/staging e comparar visualmente as rotas/estados contra as capturas. A revisão atual ainda não cobre as páginas internas autenticadas.
+6. Fechar paginação server-side e filtros/abas persistidos na URL; em seguida corrigir divergências visuais e registrar explicitamente os itens que não puderem ser verificados. Não declarar segurança ou concorrência comprovadas apenas por inspeção de código/SQL.
