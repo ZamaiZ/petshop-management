@@ -1,9 +1,18 @@
+import type { Metadata } from "next";
 import { Suspense, type ReactNode } from "react";
 import { io } from "next/cache";
 import { requireUserContext } from "@/lib/auth/context";
 import { createClient } from "@/lib/supabase/server";
 import { WorkspaceShell } from "@/components/layout/workspace-shell";
 import { Skeleton } from "@/components/ui/skeleton";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { store } = await requireUserContext();
+
+  return {
+    title: { default: store.name, template: `%s · ${store.name}` },
+  };
+}
 
 function WorkspaceLoading() {
   return (
