@@ -3,13 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getUserContext } from "@/lib/auth/context";
+import { normalizeBrazilianPhone } from "@/lib/phone";
 import { createClient } from "@/lib/supabase/server";
 
 const optionalText = z.string().trim().max(500).transform((value) => value || null);
+const optionalPhone = z.string().trim().max(40)
+  .transform(normalizeBrazilianPhone)
+  .refine((value) => value === "" || value.length === 10 || value.length === 11, "Informe um telefone com DDD.")
+  .transform((value) => value || null);
 
 const customerSchema = z.object({
   name: z.string().trim().min(2).max(120),
-  phone: optionalText,
+  phone: optionalPhone,
   email: z.union([z.string().trim().email().max(254), z.literal("")]).transform((value) => value || null),
   notes: optionalText,
 });
@@ -167,10 +172,10 @@ export async function createCustomerAddress(input: unknown) {
     district: z.string().trim().max(120),
     city: z.string().trim().min(1).max(100),
     state: z.string().trim().max(2),
-    postalCode: z.string().trim().max(20),
+    postalCode: z.string().trim().transform((value) => value.replace(/\D/g, "")).refine((value) => /^(?:\d{8})?$/.test(value)),
     reference: z.string().trim().max(200),
   }).safeParse(input);
-  if (!parsed.success) return { ok: false, message: "Informe pelo menos a rua e a cidade." };
+  if (!parsed.success) return { ok: false, message: "Confira o endereço e informe um CEP com oito números." };
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
   const supabase = await createClient();

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getUserContext } from "@/lib/auth/context";
 import { isValidCnpj, normalizeCnpj } from "@/lib/cnpj";
+import { normalizeBrazilianPhone } from "@/lib/phone";
 import { createClient } from "@/lib/supabase/server";
 
 const responseSchema = z.object({
@@ -53,7 +54,7 @@ export async function lookupSupplierCnpj(value: string) {
       message: "Dados públicos sugeridos pela consulta. Revise antes de salvar.",
       fields: {
         name: text(data.nomeFantasia) || text(data.razaoSocial),
-        phone: text(data.telefone),
+        phone: normalizeBrazilianPhone(text(data.telefone)),
         email: text(data.email),
         street: text(data.logradouro),
         number: text(data.numero),
@@ -72,7 +73,10 @@ export async function lookupSupplierCnpj(value: string) {
 const supplierSchema = z.object({
   name: z.string().trim().min(2).max(120),
   cnpj: z.string().trim().max(18),
-  phone: z.string().trim().max(100),
+  phone: z.string().trim().max(40)
+    .transform(normalizeBrazilianPhone)
+    .refine((value) => value === "" || value.length === 10 || value.length === 11, "Informe um telefone com DDD.")
+    .transform((value) => value || null),
   email: z.union([z.string().trim().email().max(254), z.literal("")]),
   street: z.string().trim().max(200),
   number: z.string().trim().max(40),
@@ -91,7 +95,7 @@ function supplierValues(input: z.infer<typeof supplierSchema>) {
   return {
     name: input.name,
     cnpj: cnpj || null,
-    phone: input.phone || null,
+    phone: input.phone,
     email: input.email || null,
     address: {
       street: input.street || null,

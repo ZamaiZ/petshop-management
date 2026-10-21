@@ -38,10 +38,18 @@ const receiptSchema = z.object({
   })).min(1).max(200),
 });
 
-function businessError(message: string) {
+function businessError(message: string, code?: string) {
   if (message.includes("insufficient_cash")) return "O caixa não tem saldo suficiente para esse pagamento.";
   if (message.includes("lot_required")) return "Informe o código do lote para este produto.";
   if (message.includes("lot_expiration_mismatch")) return "Esse código de lote já existe com outra validade.";
+  if (message.includes("invalid_receipt_item") || message.includes("invalid_quantity_precision")) return "Confira a quantidade, a conversão e o custo dos itens recebidos.";
+  if (message.includes("invalid_payment_method")) return "Selecione uma forma de pagamento válida.";
+  if (message.includes("due_date_required")) return "Informe o vencimento da conta a pagar.";
+  if (message.includes("invalid_receipt")) return "Confira os dados do recebimento e tente novamente.";
+  if (message.includes("invalid_amount")) return "O valor do pagamento não é válido para este recebimento.";
+  if (code === "PGRST202" || code === "PGRST203" || code === "42883") return "A operação de recebimento não está disponível no banco. Verifique se as migrações de estoque foram aplicadas.";
+  if (code === "23503") return "Um produto ou fornecedor não está mais disponível. Atualize a tela e tente novamente.";
+  if (code === "23514") return "Algum item não respeita a unidade ou a quantidade permitida para o produto.";
   if (message.includes("inventory_changed_during_count")) return "O estoque mudou durante a contagem. Inicie uma nova contagem.";
   if (message.includes("insufficient_stock")) return "A quantidade informada excede o saldo disponível.";
   if (message.includes("idempotency_payload_mismatch")) return "Esta operação já foi enviada com outros dados. Atualize a tela e tente novamente.";
@@ -417,7 +425,23 @@ export async function receiveGoods(input: unknown) {
     p_method: parsed.data.method,
     p_session: parsed.data.sessionId,
   });
-  if (error) return { ok: false, message: businessError(error.message) };
+  if (error) {
+    const reference = crypto.randomUUID();
+    const safeDiagnosticText = (value: string | null | undefined) => value
+      ?.replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "[uuid]")
+      .replace(/\b\d{8,}\b/g, "[number]")
+      .replace(/[\r\n\t]+/g, " ")
+      .slice(0, 240);
+    const diagnostic = {
+      reference,
+      code: error.code,
+      message: safeDiagnosticText(error.message),
+      details: safeDiagnosticText(error.details),
+      hint: safeDiagnosticText(error.hint),
+    };
+    console.error(`[receiveGoods] RPC failed ${JSON.stringify(diagnostic)}`);
+    return { ok: false, message: `${businessError(error.message, error.code)} Referência: ${reference}.` };
+  }
   revalidatePath("/estoque");
   revalidatePath("/financeiro");
   revalidatePath("/dashboard");

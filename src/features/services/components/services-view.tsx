@@ -7,8 +7,10 @@ import { archiveService, createService, restoreService, updateService } from "@/
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { BrlInput } from "@/components/ui/brl-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatMoney, formatMoneyInput } from "@/lib/format";
 import type { ServiceRecord } from "../queries";
 
@@ -54,7 +56,7 @@ function ServiceDialog({ service, open, onOpenChange, onSaved }: {
           <div className="space-y-1.5"><Label htmlFor="service-name">Nome</Label><Input id="service-name" name="name" defaultValue={service?.name ?? ""} required minLength={2} maxLength={120} className="h-10" /></div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5"><Label htmlFor="service-duration">Duração (minutos)</Label><Input id="service-duration" name="duration" type="number" min="15" max="600" step="15" defaultValue={service?.duration_minutes ?? 30} required className="h-10" /></div>
-            <div className="space-y-1.5"><Label htmlFor="service-price">Preço (R$)</Label><Input id="service-price" name="price" inputMode="decimal" defaultValue={service ? formatMoneyInput(service.price_cents) : "0,00"} required className="h-10 tabular-nums" /></div>
+            <div className="space-y-1.5"><Label htmlFor="service-price">Preço (R$)</Label><BrlInput id="service-price" name="price" defaultValue={service ? formatMoneyInput(service.price_cents) : "0,00"} required className="h-10 tabular-nums" /></div>
           </div>
           {message ? <p role="alert" className="text-sm text-destructive">{message}</p> : null}
           <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button type="submit" disabled={pending}>{pending ? "Salvando serviço…" : service ? "Salvar alterações" : "Cadastrar serviço"}</Button></DialogFooter>
@@ -103,14 +105,16 @@ export function ServicesView({ services }: { services: ServiceRecord[] }) {
       </div>
       {message ? <p role="alert" className="text-sm text-destructive">{message}</p> : null}
       <Card className="gap-0 rounded-xl border-border/90 p-4 shadow-xs sm:p-5">
+        <Tabs value={showArchived ? "archived" : "active"} onValueChange={(value) => setShowArchived(value === "archived")} className="w-full">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-sm"><LuSearch className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input value={search} onChange={(event) => setSearch(event.currentTarget.value)} placeholder="Buscar serviço" aria-label="Buscar serviços" className="h-10 pl-9" /></div>
-          <div className="flex gap-2" role="group" aria-label="Situação dos serviços">
-            <Button type="button" size="sm" variant={!showArchived ? "default" : "outline"} aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>Ativos</Button>
-            <Button type="button" size="sm" variant={showArchived ? "default" : "outline"} aria-pressed={showArchived} onClick={() => setShowArchived(true)}>Arquivados</Button>
-          </div>
+          <TabsList aria-label="Situação dos serviços" className="w-full sm:w-auto">
+            <TabsTrigger value="active">Ativos</TabsTrigger>
+            <TabsTrigger value="archived">Arquivados</TabsTrigger>
+          </TabsList>
         </div>
-        <div className="mt-4 divide-y divide-border">
+          <TabsContent value={showArchived ? "archived" : "active"} className="mt-4">
+        <div className="divide-y divide-border">
           {visible.map((service) => (
             <article key={service.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
@@ -131,6 +135,8 @@ export function ServicesView({ services }: { services: ServiceRecord[] }) {
           ))}
           {!visible.length ? <div className="py-12 text-center"><p className="text-sm font-medium">{services.length ? "Nenhum serviço encontrado." : "Nenhum serviço cadastrado."}</p><p className="mt-1 text-xs text-muted-foreground">{services.length ? "Ajuste a busca ou altere a situação selecionada." : "Cadastre serviços para usá-los na agenda e nas vendas."}</p></div> : null}
         </div>
+          </TabsContent>
+        </Tabs>
       </Card>
       {dialogOpen ? <ServiceDialog key={target ? `service-${target.id}` : "service-new"} service={target} open onOpenChange={setDialogOpen} onSaved={() => router.refresh()} /> : null}
     </div>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { AuthFeedback, AuthPasswordField, AuthTextField } from "./auth-fields";
+import { AuthThemeToggle } from "./auth-theme-toggle";
 
 export function LoginForm() {
   const router = useRouter();
@@ -36,7 +37,10 @@ export function LoginForm() {
   return (
     <div>
       <div className="mb-7">
-        <h2 className="text-[24px] font-semibold tracking-[-0.04em]">Entrar</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-[24px] font-semibold tracking-[-0.04em]">Entrar</h2>
+          <AuthThemeToggle />
+        </div>
         <p className="mt-2 text-[12px] text-muted-foreground">Entre na conta do seu pet shop.</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4" aria-busy={pending}>

@@ -14,6 +14,7 @@ import { BrlInput } from "@/components/ui/brl-input";
 import { Label } from "@/components/ui/label";
 import { ComboboxField } from "@/components/ui/combobox-field";
 import { formatMoney, formatMoneyInput, formatShortDate, formatTime } from "@/lib/format";
+import { formatBrazilianPhone, normalizeBrazilianPhone } from "@/lib/phone";
 import { moveDelivery } from "../actions";
 import type { DeliveryOverview, DeliveryRecord } from "../queries";
 import { receiveReceivable } from "@/features/finance/actions";
@@ -101,7 +102,7 @@ function DeliveryCard({ delivery, cashSessionId, onMove, onRefresh, timezone, di
   return <Card draggable={!disabled && delivery.status !== "delivered" && delivery.sale_status !== "cancelled"} onDragStart={(event) => event.dataTransfer.setData("text/plain", delivery.id)} aria-busy={disabled} className={`gap-0 rounded-[9px] border-border/90 bg-card p-3.5 shadow-[0_1px_2px_rgba(16,24,40,0.03)] ${disabled ? "opacity-70" : ""}`}>
     <div className="flex items-center justify-between text-[10px] font-semibold"><span>#{delivery.sale_number}</span><LuTruck className="size-3.5 text-muted-foreground" /></div>
     <p className="mt-3 truncate text-[11px] font-semibold">{delivery.customer}</p>
-    {delivery.phone ? <a href={`tel:${delivery.phone}`} className="mt-1 inline-flex items-center gap-1 text-[9px] text-muted-foreground hover:text-foreground"><LuPhone className="size-3" />{delivery.phone}</a> : null}
+    {delivery.phone ? <a href={`tel:${normalizeBrazilianPhone(delivery.phone)}`} className="mt-1 inline-flex items-center gap-1 text-[9px] text-muted-foreground hover:text-foreground"><LuPhone className="size-3" />{formatBrazilianPhone(delivery.phone)}</a> : null}
     {delivery.sale_status === "cancelled" ? <p className="mt-2 text-[9px] leading-4 text-destructive">Venda cancelada · confirme o cancelamento da entrega.</p> : null}
     <p className="mt-2 line-clamp-2 min-h-7 text-[10px] leading-4 text-muted-foreground">{delivery.items || "Pedido sem itens"}</p>
     <div className="my-3 h-px bg-border" />

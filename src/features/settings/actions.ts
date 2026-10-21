@@ -5,6 +5,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getUserContext } from "@/lib/auth/context";
 import { BUSINESS_TIME_ZONE } from "@/lib/business-rules";
+import { normalizeBrazilianPhone } from "@/lib/phone";
 import { createClient } from "@/lib/supabase/server";
 
 const themeSchema = z.enum(["system", "light", "dark"]);
@@ -43,12 +44,15 @@ export async function saveSidebarPreference(collapsed: boolean) {
   return { ok: !error };
 }
 
-const optionalText = z.string().trim().max(200).transform((value) => value || null);
+const optionalPhone = z.string().trim().max(40)
+  .transform(normalizeBrazilianPhone)
+  .refine((value) => value === "" || value.length === 10 || value.length === 11, "Informe um telefone com DDD.")
+  .transform((value) => value || null);
 
 export async function saveStoreProfile(input: unknown) {
   const parsed = z.object({
     name: z.string().trim().min(2).max(120),
-    phone: optionalText,
+    phone: optionalPhone,
     email: z.union([z.string().trim().email().max(254), z.literal("")]).transform((value) => value || null),
     address: z.object({
       postal_code: z.string().trim().regex(/^(?:\d{8})?$/),
@@ -61,7 +65,7 @@ export async function saveStoreProfile(input: unknown) {
       reference: z.string().trim().max(200),
     }),
   }).safeParse(input);
-  if (!parsed.success) return { ok: false, message: "Confira o nome, o CEP e o endereço da loja." };
+  if (!parsed.success) return { ok: false, message: "Confira o nome, o telefone, o CEP e o endereço da loja." };
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
   const existingAddress = typeof context.store.address === "object" && context.store.address !== null && !Array.isArray(context.store.address)

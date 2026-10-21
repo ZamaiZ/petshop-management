@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { LuArchive, LuBuilding2, LuMapPin, LuPencil, LuPlus, LuRotateCcw, LuSearch } from "react-icons/lu";
 import { archiveSupplier, createSupplier, lookupSupplierCnpj, restoreSupplier, updateSupplier } from "@/features/suppliers/actions";
@@ -10,7 +10,10 @@ import { CnpjInput } from "@/components/ui/cnpj-input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { formatCnpj, isValidCnpj } from "@/lib/cnpj";
+import { formatBrazilianPhone, normalizeBrazilianPhone } from "@/lib/phone";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { SupplierAddress, SupplierRecord } from "../queries";
 
 type SupplierFields = {
@@ -39,7 +42,7 @@ function initialSupplierFields(supplier: SupplierRecord | null): SupplierFields 
   return {
     name: supplier?.name ?? "",
     cnpj: supplier?.cnpj ?? "",
-    phone: supplier?.phone ?? "",
+    phone: normalizeBrazilianPhone(supplier?.phone ?? ""),
     email: supplier?.email ?? "",
     street: address.street ?? "",
     number: address.number ?? "",
@@ -63,38 +66,41 @@ function SupplierDialog({ supplier, open, onOpenChange, onSaved }: {
   const [pending, startTransition] = useTransition();
   const [lookupBusy, setLookupBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const requestSequence = useRef(0);
+  const latestCnpj = useRef(normalizeCnpj(fields.cnpj));
+  const lastScheduledCnpj = useRef(normalizeCnpj(fields.cnpj));
+  latestCnpj.current = normalizeCnpj(fields.cnpj);
 
-  function change(field: keyof SupplierFields, value: string) {
-    setFields((current) => ({ ...current, [field]: value }));
-  }
+  useEffect(() => {
+    const cnpj = normalizeCnpj(fields.cnpj);
+    if (cnpj === lastScheduledCnpj.current) return;
 
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+    lastScheduledCnpj.current = cnpj;
+    const sequence = ++requestSequence.current;
     setMessage("");
-    startTransition(async () => {
-      const result = supplier
-        ? await updateSupplier({ ...fields, id: supplier.id })
-        : await createSupplier(fields);
-      if (!result.ok) {
-        setMessage(result.message ?? "Não foi possível salvar o fornecedor.");
+    if (!isValidCnpj(cnpj)) {
+      setLookupBusy(false);
+      return;
+    }
+
+    setLookupBusy(true);
+    const timeout = setTimeout(async () => {
+      let result: Awaited<ReturnType<typeof lookupSupplierCnpj>>;
+      try {
+        result = await lookupSupplierCnpj(cnpj);
+      } catch {
+        if (sequence !== requestSequence.current || latestCnpj.current !== cnpj) return;
+        setLookupBusy(false);
+        setMessage("Consulta indisponível. Você pode preencher os dados manualmente.");
         return;
       }
-      onOpenChange(false);
-      onSaved();
-    });
-  }
-
-  function consultCnpj() {
-    if (!isValidCnpj(fields.cnpj)) return;
-    setMessage("");
-    setLookupBusy(true);
-    startTransition(async () => {
-      const result = await lookupSupplierCnpj(fields.cnpj);
+      if (sequence !== requestSequence.current || latestCnpj.current !== cnpj) return;
       setLookupBusy(false);
       if (!result.ok || !result.fields) {
         setMessage(result.message ?? "Não foi possível consultar o CNPJ.");
         return;
       }
+
       const suggested = result.fields;
       setFields((current) => ({
         ...current,
@@ -110,6 +116,41 @@ function SupplierDialog({ supplier, open, onOpenChange, onSaved }: {
         state: current.state.trim() ? current.state : suggested.state,
       }));
       setMessage(result.message ?? "Dados sugeridos. Revise antes de salvar.");
+    }, 500);
+
+    return () => {
+      clearTimeout(timeout);
+      if (requestSequence.current === sequence) requestSequence.current += 1;
+    };
+  }, [fields.cnpj]);
+
+  function change(field: keyof SupplierFields, value: string) {
+    setFields((current) => ({ ...current, [field]: value }));
+  }
+
+  function changeCnpj(value: string) {
+    const cnpj = normalizeCnpj(value);
+    change("cnpj", value);
+    if (cnpj !== lastScheduledCnpj.current) setLookupBusy(isValidCnpj(cnpj));
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (lookupBusy) {
+      setMessage("Aguarde o fim da consulta do CNPJ antes de salvar.");
+      return;
+    }
+    setMessage("");
+    startTransition(async () => {
+      const result = supplier
+        ? await updateSupplier({ ...fields, id: supplier.id })
+        : await createSupplier(fields);
+      if (!result.ok) {
+        setMessage(result.message ?? "Não foi possível salvar o fornecedor.");
+        return;
+      }
+      onOpenChange(false);
+      onSaved();
     });
   }
 
@@ -118,19 +159,19 @@ function SupplierDialog({ supplier, open, onOpenChange, onSaved }: {
       <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-[640px]">
         <DialogHeader>
           <DialogTitle>{supplier ? "Editar fornecedor" : "Novo fornecedor"}</DialogTitle>
-          <DialogDescription>Consultar CNPJ sugere dados públicos e não confirma regularidade fiscal.</DialogDescription>
+          <DialogDescription>Ao informar um CNPJ válido, os dados públicos são sugeridos automaticamente. Revise antes de salvar.</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-5">
           <div className="space-y-1.5">
             <Label htmlFor="supplier-cnpj">CNPJ</Label>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <CnpjInput id="supplier-cnpj" value={fields.cnpj} onValueChange={(value) => change("cnpj", value)} placeholder="00.000.000/0000-00" className="h-10 sm:flex-1" />
-              {isValidCnpj(fields.cnpj) ? <Button type="button" variant="outline" className="h-10" disabled={pending || lookupBusy} onClick={consultCnpj}>{lookupBusy ? "Consultando…" : "Consultar CNPJ"}</Button> : null}
+            <div className="space-y-1.5">
+              <CnpjInput id="supplier-cnpj" value={fields.cnpj} onValueChange={changeCnpj} placeholder="00.000.000/0000-00" className="h-10" />
+              {lookupBusy ? <p role="status" className="text-xs text-muted-foreground">Consultando CNPJ…</p> : null}
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="supplier-name">Nome de exibição</Label><Input id="supplier-name" value={fields.name} onChange={(event) => change("name", event.currentTarget.value)} required minLength={2} maxLength={120} className="h-10" /></div>
-            <div className="space-y-1.5"><Label htmlFor="supplier-phone">Telefone</Label><Input id="supplier-phone" value={fields.phone} onChange={(event) => change("phone", event.currentTarget.value)} maxLength={100} className="h-10" /></div>
+            <div className="space-y-1.5"><Label htmlFor="supplier-phone">Telefone</Label><PhoneInput id="supplier-phone" value={fields.phone} onValueChange={(value) => change("phone", value)} maxLength={20} className="h-10" /></div>
             <div className="space-y-1.5"><Label htmlFor="supplier-email">E-mail</Label><Input id="supplier-email" type="email" value={fields.email} onChange={(event) => change("email", event.currentTarget.value)} maxLength={254} className="h-10" /></div>
             <div className="space-y-1.5 sm:col-span-2"><h3 className="text-sm font-semibold">Endereço</h3></div>
             <div className="space-y-1.5"><Label htmlFor="supplier-street">Logradouro</Label><Input id="supplier-street" value={fields.street} onChange={(event) => change("street", event.currentTarget.value)} maxLength={200} className="h-10" /></div>
@@ -163,7 +204,7 @@ export function SuppliersView({ suppliers }: { suppliers: SupplierRecord[] }) {
     if (Boolean(supplier.archived_at) !== showArchived) return false;
     const address = readAddress(supplier.address);
     const query = search.trim().toLocaleLowerCase("pt-BR");
-    return !query || [supplier.name, supplier.cnpj, supplier.phone, supplier.email, address.city, address.state]
+    return !query || [supplier.name, supplier.cnpj, supplier.phone, formatBrazilianPhone(supplier.phone), supplier.email, address.city, address.state]
       .some((value) => value?.toLocaleLowerCase("pt-BR").includes(query));
   }), [search, showArchived, suppliers]);
 
@@ -193,14 +234,16 @@ export function SuppliersView({ suppliers }: { suppliers: SupplierRecord[] }) {
       </div>
       {message ? <p role="alert" className="text-sm text-destructive">{message}</p> : null}
       <Card className="gap-0 rounded-xl border-border/90 p-4 shadow-xs sm:p-5">
+        <Tabs value={showArchived ? "archived" : "active"} onValueChange={(value) => setShowArchived(value === "archived")} className="w-full">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-sm"><LuSearch className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input value={search} onChange={(event) => setSearch(event.currentTarget.value)} placeholder="Buscar nome, CNPJ, contato ou cidade" aria-label="Buscar fornecedores" className="h-10 pl-9" /></div>
-          <div className="flex gap-2" role="group" aria-label="Situação dos fornecedores">
-            <Button type="button" size="sm" variant={!showArchived ? "default" : "outline"} aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>Ativos</Button>
-            <Button type="button" size="sm" variant={showArchived ? "default" : "outline"} aria-pressed={showArchived} onClick={() => setShowArchived(true)}>Arquivados</Button>
-          </div>
+          <TabsList aria-label="Situação dos fornecedores" className="w-full sm:w-auto">
+            <TabsTrigger value="active">Ativos</TabsTrigger>
+            <TabsTrigger value="archived">Arquivados</TabsTrigger>
+          </TabsList>
         </div>
-        <div className="mt-4 divide-y divide-border">
+          <TabsContent value={showArchived ? "archived" : "active"} className="mt-4">
+        <div className="divide-y divide-border">
           {visible.map((supplier) => {
             const address = readAddress(supplier.address);
             const location = [address.city, address.state].filter(Boolean).join(" / ");
@@ -210,7 +253,7 @@ export function SuppliersView({ suppliers }: { suppliers: SupplierRecord[] }) {
                   <h2 className="truncate text-sm font-semibold">{supplier.name}</h2>
                   <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     {supplier.cnpj ? <span className="inline-flex items-center gap-1.5"><LuBuilding2 className="size-3.5" aria-hidden="true" />{formatCnpj(supplier.cnpj)}</span> : null}
-                    {supplier.phone ? <span>{supplier.phone}</span> : null}
+                    {supplier.phone ? <span>{formatBrazilianPhone(supplier.phone)}</span> : null}
                     {supplier.email ? <span className="break-all">{supplier.email}</span> : null}
                     {location ? <span className="inline-flex items-center gap-1.5"><LuMapPin className="size-3.5" aria-hidden="true" />{location}</span> : null}
                     {!supplier.cnpj && !supplier.phone && !supplier.email && !location ? <span>Sem dados de contato</span> : null}
@@ -228,6 +271,8 @@ export function SuppliersView({ suppliers }: { suppliers: SupplierRecord[] }) {
           })}
           {!visible.length ? <div className="py-12 text-center"><p className="text-sm font-medium">{suppliers.length ? "Nenhum fornecedor encontrado." : "Nenhum fornecedor cadastrado."}</p><p className="mt-1 text-xs text-muted-foreground">{suppliers.length ? "Ajuste a busca ou altere a situação selecionada." : "Cadastre um fornecedor para vincular recebimentos de mercadoria."}</p></div> : null}
         </div>
+          </TabsContent>
+        </Tabs>
       </Card>
       {dialogOpen ? <SupplierDialog key={target ? `supplier-${target.id}` : "supplier-new"} supplier={target} open onOpenChange={setDialogOpen} onSaved={() => router.refresh()} /> : null}
     </div>

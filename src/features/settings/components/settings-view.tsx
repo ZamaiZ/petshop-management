@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { CepLookupField, type CepAddress } from "@/components/ui/cep-lookup-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { removeStoreLogo, saveStoreProfile, uploadStoreLogo } from "../actions";
 
 type AddressField = "postal_code" | "street" | "number" | "complement" | "district" | "city" | "state" | "reference";
@@ -151,7 +152,7 @@ export function SettingsView({ store, logoUrl }: {
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5"><Label htmlFor="store-name">Nome da loja</Label><Input id="store-name" name="name" defaultValue={store.name} required minLength={2} maxLength={120} className="h-10" /></div>
-            <div className="space-y-1.5"><Label htmlFor="store-phone">Telefone</Label><Input id="store-phone" name="phone" defaultValue={store.phone ?? ""} maxLength={200} className="h-10" /></div>
+            <div className="space-y-1.5"><Label htmlFor="store-phone">Telefone</Label><PhoneInput id="store-phone" name="phone" defaultValue={store.phone ?? ""} maxLength={20} className="h-10" /></div>
             <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="store-email">E-mail</Label><Input id="store-email" name="email" type="email" defaultValue={store.email ?? ""} maxLength={254} className="h-10" /></div>
           </div>
           <div>
