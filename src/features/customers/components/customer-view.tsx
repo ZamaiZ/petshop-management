@@ -46,7 +46,7 @@ function CustomerFormDialog() {
     startTransition(async () => {
       const result = await createCustomer(data);
       if (!result.ok) {
-        setMessage(result.message);
+        setMessage(result.message ?? "Não foi possível concluir a operação.");
         return;
       }
       form.reset();
@@ -108,7 +108,7 @@ function PetForm({ customerId, onSaved }: { customerId: string; onSaved: () => v
     startTransition(async () => {
       const result = await createPet(data);
       if (!result.ok) {
-        setMessage(result.message);
+        setMessage(result.message ?? "Não foi possível concluir a operação.");
         return;
       }
       form.reset();
@@ -156,7 +156,7 @@ function AddressForm({ customerId, onSaved }: { customerId: string; onSaved: () 
         postalCode: String(values.get("postalCode") ?? ""),
         reference: String(values.get("reference") ?? ""),
       });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       form.reset();
       onSaved();
     });
@@ -179,7 +179,7 @@ function ArchiveAddressButton({ customerId, addressId, onSaved }: { customerId: 
     setMessage("");
     startTransition(async () => {
       const result = await archiveCustomerAddress(customerId, addressId);
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       onSaved();
     });
@@ -199,7 +199,7 @@ function CustomerProfile({ customer, onArchive }: { customer: CustomerRecord; on
     startTransition(async () => {
       const result = await archiveCustomer(customer.id);
       if (!result.ok) {
-        setMessage(result.message);
+        setMessage(result.message ?? "Não foi possível concluir a operação.");
         return;
       }
       setOpen(false);

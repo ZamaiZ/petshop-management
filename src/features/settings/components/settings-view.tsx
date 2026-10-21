@@ -50,7 +50,7 @@ export function SettingsView({ store, role, logoUrl, catalog }: { store: { id: s
     setSaved(false);
     startTransition(async () => {
       const result = await saveStoreProfile({ name: String(form.get("name") ?? ""), phone: String(form.get("phone") ?? ""), email: String(form.get("email") ?? ""), city: String(form.get("city") ?? ""), state: String(form.get("state") ?? ""), street: String(form.get("street") ?? ""), timezone });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setSaved(true);
       router.refresh();
     });
@@ -67,7 +67,7 @@ export function SettingsView({ store, role, logoUrl, catalog }: { store: { id: s
     startTransition(async () => {
       const result = await uploadStoreLogo(form);
       setBusy(false);
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       if (fileRef.current) fileRef.current.value = "";
       setSaved(true);
       router.refresh();
@@ -78,7 +78,7 @@ export function SettingsView({ store, role, logoUrl, catalog }: { store: { id: s
     setMessage("");
     startTransition(async () => {
       const result = await removeStoreLogo();
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setSaved(true);
       router.refresh();
     });
@@ -116,11 +116,11 @@ export function SettingsView({ store, role, logoUrl, catalog }: { store: { id: s
 
     <section className="grid max-w-[1100px] gap-4 xl:grid-cols-2">
       <CatalogCard title="Serviços de banho e tosa" addLabel="Novo serviço" onAdd={() => setServiceOpen(true)}>
-        {catalog.services.filter((service) => !service.archived_at).map((service) => <div key={service.id} className="flex items-center justify-between gap-3 border-b border-border py-3 last:border-0"><div className="min-w-0"><p className="truncate text-[11px] font-medium">{service.name}</p><p className="mt-1 text-[10px] text-muted-foreground">{service.duration_minutes} minutos · {formatMoney(service.price_cents)}</p></div><Button variant="ghost" size="sm" className="h-7 px-2 text-[9px] text-muted-foreground" onClick={() => startTransition(async () => { const result = await archiveService(service.id); if (!result.ok) setMessage(result.message); else router.refresh(); })}>Arquivar</Button></div>)}
+        {catalog.services.filter((service) => !service.archived_at).map((service) => <div key={service.id} className="flex items-center justify-between gap-3 border-b border-border py-3 last:border-0"><div className="min-w-0"><p className="truncate text-[11px] font-medium">{service.name}</p><p className="mt-1 text-[10px] text-muted-foreground">{service.duration_minutes} minutos · {formatMoney(service.price_cents)}</p></div><Button variant="ghost" size="sm" className="h-7 px-2 text-[9px] text-muted-foreground" onClick={() => startTransition(async () => { const result = await archiveService(service.id); if (!result.ok) setMessage(result.message ?? "Não foi possível concluir a operação."); else router.refresh(); })}>Arquivar</Button></div>)}
         {!catalog.services.some((service) => !service.archived_at) ? <p className="py-8 text-center text-[10px] text-muted-foreground">Nenhum serviço cadastrado.</p> : null}
       </CatalogCard>
       <CatalogCard title="Fornecedores" addLabel="Novo fornecedor" onAdd={() => setSupplierOpen(true)}>
-        {catalog.suppliers.filter((supplier) => !supplier.archived_at).map((supplier) => <div key={supplier.id} className="flex items-center justify-between gap-3 border-b border-border py-3 last:border-0"><div className="min-w-0"><p className="truncate text-[11px] font-medium">{supplier.name}</p><p className="mt-1 truncate text-[10px] text-muted-foreground">{[supplier.phone, supplier.email].filter(Boolean).join(" · ") || "Sem contato"}</p></div><Button variant="ghost" size="sm" className="h-7 px-2 text-[9px] text-muted-foreground" onClick={() => startTransition(async () => { const result = await archiveSupplier(supplier.id); if (!result.ok) setMessage(result.message); else router.refresh(); })}>Arquivar</Button></div>)}
+        {catalog.suppliers.filter((supplier) => !supplier.archived_at).map((supplier) => <div key={supplier.id} className="flex items-center justify-between gap-3 border-b border-border py-3 last:border-0"><div className="min-w-0"><p className="truncate text-[11px] font-medium">{supplier.name}</p><p className="mt-1 truncate text-[10px] text-muted-foreground">{[supplier.phone, supplier.email].filter(Boolean).join(" · ") || "Sem contato"}</p></div><Button variant="ghost" size="sm" className="h-7 px-2 text-[9px] text-muted-foreground" onClick={() => startTransition(async () => { const result = await archiveSupplier(supplier.id); if (!result.ok) setMessage(result.message ?? "Não foi possível concluir a operação."); else router.refresh(); })}>Arquivar</Button></div>)}
         {!catalog.suppliers.some((supplier) => !supplier.archived_at) ? <p className="py-8 text-center text-[10px] text-muted-foreground">Nenhum fornecedor cadastrado.</p> : null}
       </CatalogCard>
     </section>
@@ -143,7 +143,7 @@ function CreateServiceDialog({ open, onOpenChange, onSaved }: { open: boolean; o
     setMessage("");
     startTransition(async () => {
       const result = await createService({ name: String(form.get("name") ?? ""), price: String(form.get("price") ?? ""), duration: String(form.get("duration") ?? "") });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       onOpenChange(false);
       onSaved();
     });
@@ -160,7 +160,7 @@ function CreateSupplierDialog({ open, onOpenChange, onSaved }: { open: boolean; 
     setMessage("");
     startTransition(async () => {
       const result = await createSupplier({ name: String(form.get("name") ?? ""), phone: String(form.get("phone") ?? ""), email: String(form.get("email") ?? "") });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       onOpenChange(false);
       onSaved();
     });

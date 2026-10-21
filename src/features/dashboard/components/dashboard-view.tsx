@@ -6,6 +6,7 @@ import {
   LuClock3,
   LuCreditCard,
   LuPackage,
+  LuPawPrint,
   LuPlus,
   LuScissors,
   LuShoppingBag,

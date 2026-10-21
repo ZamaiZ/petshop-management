@@ -12,7 +12,7 @@ export async function moveDelivery(input: unknown) {
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
   const supabase = await createClient();
-  const { error } = await supabase.rpc("move_delivery", { p_store: context.store.id, p_delivery: parsed.data.deliveryId, p_status: parsed.data.status, p_position: parsed.data.position, p_expected_version: parsed.data.expectedVersion, p_reason: parsed.data.reason || null });
+  const { error } = await supabase.rpc("move_delivery", { p_store: context.store.id, p_delivery: parsed.data.deliveryId, p_status: parsed.data.status, p_position: parsed.data.position, p_expected_version: parsed.data.expectedVersion, p_reason: parsed.data.reason || undefined });
   if (error) {
     if (error.message.includes("version_conflict")) return { ok: false, message: "Outra pessoa atualizou esta entrega. Atualize o quadro e tente novamente." };
     if (error.message.includes("cancelled_sale_delivery")) return { ok: false, message: "A venda foi cancelada. Cancele a entrega separadamente antes de avançá-la." };

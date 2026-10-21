@@ -5,9 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   LuBanknote,
   LuCalendarClock,
-  LuCircleDollarSign,
   LuClock3,
-  LuCreditCard,
   LuDownload,
   LuPlus,
   LuReceiptText,
@@ -15,7 +13,6 @@ import {
 } from "react-icons/lu";
 import { DataTable, type DataTableColumn } from "@/components/data-table/data-table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -88,7 +85,7 @@ function OpenCashDialog({ onSaved }: { onSaved: () => void }) {
     setMessage("");
     startTransition(async () => {
       const result = await openCash({ opening: moneyInput(openingCents), counts: countByDenomination ? cashCountPayload(counts) : [], key });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       onSaved();
     });
@@ -113,7 +110,7 @@ function CashMovementDialog({ sessionId, kind, onSaved }: { sessionId: string; k
     setMessage("");
     startTransition(async () => {
       const result = await moveCash({ sessionId, kind, amount: String(form.get("amount") ?? ""), reason: String(form.get("reason") ?? ""), key });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       onSaved();
     });
@@ -146,7 +143,7 @@ function CloseCashDialog({ session, onSaved }: { session: NonNullable<FinanceOve
     }
     startTransition(async () => {
       const result = await closeCash({ sessionId: session.id, counted: moneyInput(countedCents), notes: String(form.get("notes") ?? ""), counts: countByDenomination ? cashCountPayload(counts) : [], key });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       onSaved();
     });
@@ -171,7 +168,7 @@ function ReceiveReceivableDialog({ receivable, cashSessionId, onSaved }: { recei
     setMessage("");
     startTransition(async () => {
       const result = await receiveReceivable({ receivableId: receivable.id, amount: String(form.get("amount") ?? ""), method, sessionId: method === "cash" ? cashSessionId : null, tendered: String(form.get("tendered") ?? ""), key });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       onSaved();
     });
@@ -196,7 +193,7 @@ function PayPayableDialog({ payable, cashSessionId, onSaved }: { payable: Financ
     setMessage("");
     startTransition(async () => {
       const result = await payPayable({ payableId: payable.id, amount: String(form.get("amount") ?? ""), method, sessionId: method === "cash" ? cashSessionId : null, key });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       onSaved();
     });
@@ -218,7 +215,7 @@ function ExpenseCategoryDialog() {
     const form = new FormData(event.currentTarget);
     startTransition(async () => {
       const result = await createExpenseCategory(String(form.get("name") ?? ""));
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       router.refresh();
     });
@@ -244,7 +241,7 @@ function ExpenseDialog({ overview, timezone, onSaved }: { overview: FinanceOverv
     setMessage("");
     startTransition(async () => {
       const result = await createExpense({ description: String(form.get("description") ?? ""), categoryId, amount: String(form.get("amount") ?? ""), dueOn: String(form.get("dueOn") ?? ""), payNow, method, sessionId: payNow && method === "cash" ? overview.cashSession?.id ?? null : null, key });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       onSaved();
     });
@@ -275,7 +272,12 @@ function FinanceExportDialog({ today }: { today: string }) {
     const params = new URLSearchParams({ from, to });
     const route = type === "sales" ? "/api/exports/sales" : `/api/exports/finance?type=${type}`;
     setOpen(false);
-    window.location.assign(`${route}?${params.toString()}`);
+    const link = document.createElement("a");
+    link.href = `${route}?${params.toString()}`;
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
   }
 
   return <>

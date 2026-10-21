@@ -218,6 +218,27 @@ export type Database = {
         created_at: string;
         updated_at: string;
       }>;
+      sale_returns: Table<{
+        id: string;
+        store_id: string;
+        sale_id: string;
+        reason: string;
+        refund_cents: number;
+        idempotency_key: string;
+        created_at: string;
+        updated_at: string;
+      }>;
+      sale_return_items: Table<{
+        id: string;
+        store_id: string;
+        return_id: string;
+        sale_id: string;
+        sale_item_id: string;
+        quantity: number;
+        restock: boolean;
+        created_at: string;
+        updated_at: string;
+      }>;
       payments: Table<{
         id: string;
         store_id: string;
@@ -328,6 +349,31 @@ export type Database = {
         created_at: string;
         updated_at: string;
       }>;
+      goods_receipts: Table<{
+        id: string;
+        store_id: string;
+        supplier_id: string | null;
+        invoice_reference: string | null;
+        received_at: string;
+        total_cents: number;
+        idempotency_key: string;
+        notes: string | null;
+        created_at: string;
+        updated_at: string;
+      }>;
+      goods_receipt_items: Table<{
+        id: string;
+        store_id: string;
+        receipt_id: string;
+        product_id: string;
+        lot_id: string | null;
+        packages: number;
+        conversion_factor: number;
+        base_quantity: number;
+        total_cost_cents: number;
+        created_at: string;
+        updated_at: string;
+      }>;
       appointments: Table<{
         id: string;
         store_id: string;
@@ -356,6 +402,27 @@ export type Database = {
         version: number;
         delivery_notes: string | null;
         delivered_at: string | null;
+        created_at: string;
+        updated_at: string;
+      }>;
+      delivery_events: Table<{
+        id: string;
+        store_id: string;
+        delivery_id: string;
+        from_status: string | null;
+        to_status: string;
+        reason: string | null;
+        created_at: string;
+        updated_at: string;
+      }>;
+      audit_logs: Table<{
+        id: string;
+        store_id: string;
+        actor_user_id: string | null;
+        action: string;
+        entity_table: string;
+        entity_id: string | null;
+        details: Json;
         created_at: string;
         updated_at: string;
       }>;

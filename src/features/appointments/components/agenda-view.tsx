@@ -95,7 +95,7 @@ function AppointmentForm({ date, data, onClose }: { date: string; data: AgendaDa
         time: String(form.get("time") ?? ""),
         notes: String(form.get("notes") ?? ""),
       });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       onClose();
       router.refresh();
     });
@@ -128,7 +128,7 @@ function StatusReasonDialog({ appointment, status, onUpdated }: { appointment: A
     setMessage("");
     startTransition(async () => {
       const result = await updateAppointmentStatus({ appointmentId: appointment.id, status, expectedVersion: appointment.version, reason });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       onUpdated();
       router.refresh();
@@ -163,7 +163,7 @@ function RescheduleDialog({ appointment, services, timezone }: { appointment: Ag
         expectedVersion: appointment.version,
         reason: String(form.get("reason") ?? ""),
       });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       router.refresh();
     });
@@ -192,7 +192,7 @@ function AppointmentCard({ appointment, services, timezone }: { appointment: Age
     setMessage("");
     startTransition(async () => {
       const result = await updateAppointmentStatus({ appointmentId: appointment.id, status: next.status, expectedVersion: appointment.version, reason: "" });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       router.refresh();
     });
   }

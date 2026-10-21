@@ -49,7 +49,7 @@ function ReceiveOnDelivery({ delivery, cashSessionId, onSaved }: { delivery: Del
     setMessage("");
     startTransition(async () => {
       const result = await receiveReceivable({ receivableId: delivery.receivable_id!, amount: String(form.get("amount") ?? ""), method, sessionId: method === "cash" ? cashSessionId : null, tendered: String(form.get("tendered") ?? ""), key });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       onSaved();
     });
@@ -73,7 +73,7 @@ function CancelDelivery({ delivery, onSaved }: { delivery: DeliveryRecord; onSav
     setMessage("");
     startTransition(async () => {
       const result = await moveDelivery({ deliveryId: delivery.id, status: "cancelled", position: delivery.position, expectedVersion: delivery.version, reason });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       onSaved();
     });
@@ -129,7 +129,7 @@ export function DeliveryBoard({ overview, timezone }: { overview: DeliveryOvervi
     setError("");
     startTransition(async () => {
       const result = await moveDelivery({ deliveryId: delivery.id, status, position, expectedVersion: delivery.version, reason: "" });
-      if (!result.ok) { setError(result.message); return; }
+      if (!result.ok) { setError(result.message ?? "Não foi possível atualizar a entrega."); return; }
       router.refresh();
     });
   }

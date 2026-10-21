@@ -66,7 +66,7 @@ function SaleActionDialog({ sale, cashSessionId }: { sale: SaleRecord; cashSessi
       const result = mode === "cancel"
         ? await cancelSale({ saleId: sale.id, reason, method, cashSessionId, key })
         : await returnSaleItems({ saleId: sale.id, reason, method, cashSessionId, key, lines: returnLines.map((line) => ({ saleItemId: line.saleItemId, quantity: Number(line.quantity), restock: line.restock })).filter((line) => line.quantity > 0) });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setMode("details");
       router.refresh();
     });

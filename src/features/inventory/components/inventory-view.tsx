@@ -70,7 +70,7 @@ function ProductDialog({ categories }: { categories: InventoryOverview["categori
         averageCost: form.get("averageCost"),
       });
       if (!result.ok) {
-        setMessage(result.message);
+        setMessage(result.message ?? "Não foi possível concluir a operação.");
         return;
       }
       setOpen(false);
@@ -123,7 +123,7 @@ function CategoryDialog() {
     setMessage("");
     startTransition(async () => {
       const result = await createCategory(String(data.get("name") ?? ""));
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       router.refresh();
     });
@@ -160,7 +160,7 @@ function PackagingDialog({ product, onSaved }: { product: InventoryProduct; onSa
         barcode: String(form.get("barcode") ?? ""),
         baseQuantity: String(form.get("baseQuantity") ?? ""),
       });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       edit(null);
       onSaved();
     });
@@ -170,7 +170,7 @@ function PackagingDialog({ product, onSaved }: { product: InventoryProduct; onSa
     if (!removeTarget) return;
     startRemoveTransition(async () => {
       const result = await deleteProductPackaging(product.id, removeTarget.id);
-      if (!result.ok) { setMessage(result.message); setRemoveTarget(null); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); setRemoveTarget(null); return; }
       setRemoveTarget(null);
       edit(null);
       onSaved();
@@ -226,7 +226,7 @@ function EditProductDialog({ product, categories, onSaved }: { product: Inventor
         minimumStock: form.get("minimumStock"),
       });
       if (!result.ok) {
-        setMessage(result.message);
+        setMessage(result.message ?? "Não foi possível concluir a operação.");
         return;
       }
       setOpen(false);
@@ -269,7 +269,7 @@ function ArchiveProductButton({ product, onArchived }: { product: InventoryProdu
     startTransition(async () => {
       const result = await archiveProduct(product.id);
       if (!result.ok) {
-        setMessage(result.message);
+        setMessage(result.message ?? "Não foi possível concluir a operação.");
         return;
       }
       setOpen(false);
@@ -302,7 +302,7 @@ function AdjustmentDialog({ product, onSaved }: { product: InventoryProduct; onS
     setMessage("");
     startTransition(async () => {
       const result = await adjustStock({ productId: product.id, counted: String(form.get("counted") ?? ""), reason: String(form.get("reason") ?? ""), lotId: lotId || null, key: operationKey });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       onSaved();
     });
@@ -368,7 +368,7 @@ function ReceiptDialog({ overview, onSaved }: { overview: InventoryOverview; onS
         sessionId: method === "cash" && payNow ? overview.openCashSession : null,
         items: converted.map((item, index) => ({ ...item, lotCode: items[index].lotCode, expiresOn: items[index].expiresOn })),
       });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       onSaved();
     });
@@ -440,7 +440,7 @@ function BulkConversionDialog({ products, onSaved }: { products: InventoryProduc
     setMessage("");
     startTransition(async () => {
       const result = await convertToBulk({ sourceProductId, targetProductId, sourceQuantity, targetPerSource, reason: String(form.get("reason") ?? ""), key });
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       onSaved();
     });
@@ -475,7 +475,7 @@ function CountDialog({ onSaved }: { onSaved: () => void }) {
     setLoading(true);
     setMessage("");
     const result = await startInventoryCount();
-    if (!result.ok) setMessage(result.message);
+    if (!result.ok) setMessage(result.message ?? "Não foi possível concluir a operação.");
     else { setCountId(result.countId); setOperationKey(crypto.randomUUID()); setLines(result.lines); }
     setLoading(false);
   }
@@ -491,7 +491,7 @@ function CountDialog({ onSaved }: { onSaved: () => void }) {
     setMessage("");
     startTransition(async () => {
       const result = await completeInventoryCount(countId, lines.map((line) => ({ itemId: line.itemId, counted: line.counted })), operationKey);
-      if (!result.ok) { setMessage(result.message); return; }
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       setCountId("");
       setLines([]);

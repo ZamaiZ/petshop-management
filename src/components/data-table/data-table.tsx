@@ -5,6 +5,7 @@ import {
   createFilteredRowModel,
   createPaginatedRowModel,
   createSortedRowModel,
+  columnFilteringFeature,
   flexRender,
   globalFilteringFeature,
   rowPaginationFeature,
@@ -12,6 +13,7 @@ import {
   tableFeatures,
   useTable,
   type ColumnDef,
+  type RowData,
 } from "@tanstack/react-table";
 import { LuArrowDown, LuArrowUp, LuArrowUpDown, LuSearch } from "react-icons/lu";
 import { Button } from "@/components/ui/button";
@@ -26,6 +28,7 @@ import {
 } from "@/components/ui/table";
 
 const features = tableFeatures({
+  columnFilteringFeature,
   globalFilteringFeature,
   rowSortingFeature,
   rowPaginationFeature,
@@ -34,9 +37,9 @@ const features = tableFeatures({
   paginatedRowModel: createPaginatedRowModel(),
 });
 
-export type DataTableColumn<TData> = ColumnDef<typeof features, TData>;
+export type DataTableColumn<TData extends RowData> = ColumnDef<typeof features, TData>;
 
-export function DataTable<TData>({
+export function DataTable<TData extends RowData>({
   columns,
   data,
   searchPlaceholder = "Buscar…",
@@ -98,7 +101,7 @@ export function DataTable<TData>({
           <TableBody>
             {table.getRowModel().rows.length ? table.getRowModel().rows.map((row) => (
               <TableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => (
+                {row.getAllCells().map((cell) => (
                   <TableCell key={cell.id} className="px-4 py-3.5 text-[11px] sm:px-5">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>

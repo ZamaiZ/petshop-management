@@ -88,15 +88,16 @@ export async function getFinanceOverview(storeId: string, timezone: string) {
   const sales = new Map(salesResult.data.map((row) => [row.id, row.number]));
   const suppliers = new Map(suppliersUsedResult.data.map((row) => [row.id, row.name]));
   const categories = new Map(categoriesUsedResult.data.map((row) => [row.id, row.name]));
+  const currentSession = currentSessionResult.data;
   let cashSession: FinanceOverview["cashSession"] = null;
   let cashMovements: FinanceOverview["cashMovements"] = [];
-  if (currentSessionResult.data) {
-    const movementsResult = await readPages((from, to) => supabase.from("cash_movements").select("id, kind, reason, amount_cents, occurred_at").eq("store_id", storeId).eq("cash_session_id", currentSessionResult.data.id).order("occurred_at", { ascending: true }).range(from, to));
+  if (currentSession) {
+    const movementsResult = await readPages((from, to) => supabase.from("cash_movements").select("id, kind, reason, amount_cents, occurred_at").eq("store_id", storeId).eq("cash_session_id", currentSession.id).order("occurred_at", { ascending: true }).range(from, to));
     if (movementsResult.error || !movementsResult.rows) return { data: null, error: "Falha ao carregar os movimentos do caixa." };
     cashMovements = movementsResult.rows;
     cashSession = {
-      ...currentSessionResult.data,
-      expected_cents: currentSessionResult.data.opening_cents + movementsResult.rows.reduce((sum, movement) => sum + movement.amount_cents, 0),
+      ...currentSession,
+      expected_cents: currentSession.opening_cents + movementsResult.rows.reduce((sum, movement) => sum + movement.amount_cents, 0),
     };
   }
 
