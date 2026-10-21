@@ -170,7 +170,7 @@ export function DeliveryBoard({ overview, timezone }: { overview: DeliveryOvervi
   }
 
   return <div className="space-y-5">
-    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Entregas</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Preparação, saída e entrega dos pedidos.</p></div><ButtonLink href="/vendas/nova?entrega=1" className="h-9 gap-2 px-3 text-[11px]"><LuTruck className="size-3.5" /> Nova entrega</ButtonLink></div>
+    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Entregas</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Preparação, saída e entrega dos pedidos.</p></div><ButtonLink href="/vendas?nova=1&entrega=1" className="h-9 gap-2 px-3 text-[11px]"><LuTruck className="size-3.5" /> Nova entrega</ButtonLink></div>
     <div className="rounded-md border border-border bg-card px-3 py-2.5 text-[10px] text-muted-foreground">O andamento da entrega e a situação do pagamento são acompanhados separadamente.</div>
     {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
     {pending || pendingMove ? <div aria-live="polite" className="text-[10px] text-muted-foreground">{pending ? "Salvando movimentação da entrega…" : "Atualizando o quadro…"}</div> : null}
@@ -188,6 +188,5 @@ export function DeliveryBoard({ overview, timezone }: { overview: DeliveryOvervi
     </div>
     </div>
     {overview.deliveries.some((delivery) => delivery.status === "cancelled") ? <Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="border-b border-border px-4 py-3 text-[11px] font-semibold">Entregas canceladas</div>{overview.deliveries.filter((delivery) => delivery.status === "cancelled").map((delivery) => <div key={delivery.id} className="grid gap-1 border-b border-border px-4 py-3 text-[10px] last:border-0 sm:grid-cols-[1fr_1fr_auto]"><span className="font-medium">#{delivery.sale_number} · {delivery.customer}</span><span className="text-muted-foreground">{delivery.cancellation_reason || "Motivo não informado"}</span><span className="tabular-nums">{formatMoney(delivery.total_cents)}</span></div>)}</Card> : null}
-    <div className="text-[9px] text-muted-foreground">Atualizado no fuso da loja: {timezone}</div>
   </div>;
 }

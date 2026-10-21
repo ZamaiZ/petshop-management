@@ -19,6 +19,7 @@ type DatePickerFieldProps = {
   value: string
   onValueChange: (value: string) => void
   placeholder?: string
+  ariaLabel?: string
   disabled?: boolean
   required?: boolean
   min?: string
@@ -38,6 +39,7 @@ export function DatePickerField({
   value,
   onValueChange,
   placeholder = "Selecione uma data",
+  ariaLabel,
   disabled = false,
   required = false,
   min,
@@ -60,6 +62,7 @@ export function DatePickerField({
             <Button
               id={id}
               type="button"
+              aria-label={ariaLabel}
               variant="outline"
               disabled={disabled}
               data-empty={!selectedDate}

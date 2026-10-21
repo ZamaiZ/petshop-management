@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ptBR } from "date-fns/locale";
 import {
@@ -225,6 +225,8 @@ export function AgendaView({ data, date, timezone }: { data: AgendaData; date: s
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const selected = selectedDate(date);
+  const [visibleMonth, setVisibleMonth] = useState(selected);
+  useEffect(() => { setVisibleMonth(selectedDate(date)); }, [date]);
   const dayAppointments = data.appointments;
   const services = data.services;
 
@@ -233,13 +235,13 @@ export function AgendaView({ data, date, timezone }: { data: AgendaData; date: s
   }
 
   return <div className="space-y-5">
-    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Banho e tosa</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Agendamentos e situação dos atendimentos.</p></div><Button className="h-9 gap-2 rounded-md px-3 text-[11px]" onClick={() => setCreateOpen(true)}><LuPlus className="size-3.5" /> Novo agendamento</Button></div>
+    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Agenda</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Organize os horários de banho, tosa e outros atendimentos.</p></div><Button className="h-9 gap-2 rounded-md px-3 text-[11px]" onClick={() => setCreateOpen(true)}><LuPlus className="size-3.5" /> Novo agendamento</Button></div>
     <Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[560px]"><DialogHeader><DialogTitle className="text-[18px]">Novo agendamento</DialogTitle><DialogDescription className="text-[11px]">Os horários começam em intervalos de 30 minutos. A duração vem do serviço.</DialogDescription></DialogHeader><AppointmentForm date={date} data={data} onClose={() => setCreateOpen(false)} /></DialogContent></Dialog>
     <div className="grid gap-4 xl:grid-cols-[310px_minmax(0,1fr)]">
       <div className="space-y-4">
         <Card className="gap-0 overflow-hidden rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3"><div className="text-[12px] font-semibold">{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: timezone }).format(selected)}</div><LuCalendarDays className="size-4 text-muted-foreground" /></div>
-          <Calendar mode="single" selected={selected} onSelect={(value) => { if (value) navigateDate(dateKey(value)); }} locale={ptBR} weekStartsOn={1} className="mx-auto" />
+          <div className="flex items-center justify-between border-b border-border px-4 py-3"><div className="text-[12px] font-semibold">{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: timezone }).format(visibleMonth)}</div><LuCalendarDays className="size-4 text-muted-foreground" /></div>
+          <Calendar mode="single" month={visibleMonth} onMonthChange={setVisibleMonth} selected={selected} onSelect={(value) => { if (value) navigateDate(dateKey(value)); }} locale={ptBR} weekStartsOn={1} className="mx-auto" />
           <div className="border-t border-border px-4 py-4">
             <h2 className="text-[11px] font-semibold">Serviços da loja</h2>
             <div className="mt-3 space-y-2.5">{services.length ? services.map((service) => <div key={service.id} className="flex items-start justify-between gap-3 text-[10px]"><span className="min-w-0"><span className="block truncate font-medium">{service.name}</span><span className="mt-1 flex items-center gap-1 text-muted-foreground"><LuClock3 className="size-3" />{service.duration_minutes} min</span></span><span className="whitespace-nowrap text-muted-foreground">a partir de {formatMoney(service.price_cents)}</span></div>) : <p className="text-[10px] text-muted-foreground">Cadastre os serviços da loja para liberar agendamentos.</p>}</div>

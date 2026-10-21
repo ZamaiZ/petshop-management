@@ -34,23 +34,3 @@ export function getExportPeriod(params: URLSearchParams, timeZone: string): Expo
     return null;
   }
 }
-
-type CsvValue = string | number | null | undefined;
-
-function csvCell(value: CsvValue) {
-  let text = String(value ?? "");
-  if (typeof value === "string" && /^[\s\u0000-\u001f]*[=+@-]/.test(text)) text = `'${text}`;
-  return `"${text.replace(/"/g, '""')}"`;
-}
-
-export function csvResponse(filename: string, rows: CsvValue[][]) {
-  const content = rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
-  return new Response(`\uFEFF${content}`, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Cache-Control": "private, no-store",
-    },
-  });
-}

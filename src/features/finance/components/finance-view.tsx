@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   LuBanknote,
+  LuArrowDown,
   LuCalendarClock,
   LuClock3,
   LuDownload,
@@ -23,80 +24,15 @@ import { BrlInput } from "@/components/ui/brl-input";
 import { Label } from "@/components/ui/label";
 import { ComboboxField } from "@/components/ui/combobox-field";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { addCivilDays } from "@/lib/date";
 import { formatMoney, formatMoneyInput, formatShortDate, formatTime, localDateKey } from "@/lib/format";
-import { parseMoneyToCents } from "@/lib/inputs";
-import { closeCash, createExpense, createExpenseCategory, moveCash, openCash, payPayable, receiveReceivable } from "../actions";
+import { closeCash, createExpense, createExpenseCategory, moveCash, payPayable, receiveReceivable } from "../actions";
 import type { FinanceOverview, FinancePayable, FinanceReceivable } from "../queries";
+import { CashDenominationFields, cashCountPayload, cashCountTotal, type CashCountMap } from "./cash-denominations";
+import { OpenCashDialog } from "./open-cash-dialog";
 
 function moneyInput(cents: number) {
   return formatMoneyInput(cents);
-}
-
-const cashDenominations = [
-  { cents: 20_000, label: "R$ 200" },
-  { cents: 10_000, label: "R$ 100" },
-  { cents: 5_000, label: "R$ 50" },
-  { cents: 2_000, label: "R$ 20" },
-  { cents: 1_000, label: "R$ 10" },
-  { cents: 500, label: "R$ 5" },
-  { cents: 200, label: "R$ 2" },
-  { cents: 100, label: "R$ 1" },
-  { cents: 50, label: "R$ 0,50" },
-  { cents: 25, label: "R$ 0,25" },
-  { cents: 10, label: "R$ 0,10" },
-  { cents: 5, label: "R$ 0,05" },
-];
-
-type CashCountMap = Record<number, string>;
-
-function cashCountTotal(counts: CashCountMap) {
-  return cashDenominations.reduce((total, denomination) => total + denomination.cents * (Number(counts[denomination.cents]) || 0), 0);
-}
-
-function cashCountPayload(counts: CashCountMap) {
-  return cashDenominations.flatMap((denomination) => {
-    const quantity = Number(counts[denomination.cents]) || 0;
-    return quantity > 0 ? [{ denomination_cents: denomination.cents, quantity }] : [];
-  });
-}
-
-function CashDenominationFields({ counts, onChange }: { counts: CashCountMap; onChange: (denomination: number, quantity: string) => void }) {
-  const total = cashCountTotal(counts);
-  return <div className="space-y-3">
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{cashDenominations.map((denomination) => <div key={denomination.cents} className="flex items-center gap-2 rounded-md border border-border px-2.5 py-2"><span className="w-[58px] shrink-0 text-[10px] font-medium tabular-nums">{denomination.label}</span><Input aria-label={`Quantidade de ${denomination.label}`} type="number" inputMode="numeric" min="0" step="1" value={counts[denomination.cents] ?? "0"} onChange={(event) => onChange(denomination.cents, event.target.value)} className="h-8 min-w-0 px-2 text-right text-[11px] tabular-nums" /></div>)}</div>
-    <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2.5 text-[11px]"><span className="text-muted-foreground">Total contado</span><span className="font-semibold tabular-nums">{formatMoney(total)}</span></div>
-  </div>;
-}
-
-function OpenCashDialog({ onSaved }: { onSaved: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [pending, startTransition] = useTransition();
-  const [message, setMessage] = useState("");
-  const [key, setKey] = useState("");
-  const [counts, setCounts] = useState<CashCountMap>({});
-  const [countByDenomination, setCountByDenomination] = useState(false);
-  const [openingAmount, setOpeningAmount] = useState("");
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const openingCents = countByDenomination ? cashCountTotal(counts) : parseMoneyToCents(openingAmount);
-    if (openingCents === null) {
-      setMessage("Informe um fundo inicial válido.");
-      return;
-    }
-    setMessage("");
-    startTransition(async () => {
-      const result = await openCash({ opening: moneyInput(openingCents), counts: countByDenomination ? cashCountPayload(counts) : [], key });
-      if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
-      setOpen(false);
-      onSaved();
-    });
-  }
-
-  return <>
-    <Button className="h-9 gap-2 rounded-md px-3 text-[11px]" onClick={() => { setKey(crypto.randomUUID()); setCounts({}); setOpeningAmount(""); setCountByDenomination(false); setMessage(""); setOpen(true); }}><LuPlus className="size-3.5" /> Abrir caixa</Button>
-    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[560px]"><DialogHeader><DialogTitle className="text-[17px]">Abrir caixa</DialogTitle><DialogDescription className="text-[11px]">Informe o fundo inicial disponível para troco. Pix e cartão não alteram esse saldo.</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-4"><div className="space-y-1.5"><Label htmlFor="cash-opening">Fundo inicial (R$)</Label><BrlInput id="cash-opening" name="opening" placeholder="0,00" value={countByDenomination ? moneyInput(cashCountTotal(counts)) : openingAmount} onValueChange={setOpeningAmount} readOnly={countByDenomination} required /></div><label className="flex cursor-pointer items-center gap-2 text-[11px]"><Checkbox checked={countByDenomination} onCheckedChange={(checked) => setCountByDenomination(checked === true)} />Contar por cédulas e moedas</label>{countByDenomination ? <CashDenominationFields counts={counts} onChange={(denomination, quantity) => setCounts((current) => ({ ...current, [denomination]: quantity }))} /> : <p className="text-[10px] text-muted-foreground">A contagem por denominações é opcional.</p>}{message ? <p role="alert" className="text-[11px] text-destructive">{message}</p> : null}<DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit" disabled={pending || !key}>{pending ? "Abrindo…" : "Confirmar abertura"}</Button></DialogFooter></form></DialogContent></Dialog>
-  </>;
 }
 
 function CashMovementDialog({ sessionId, kind, onSaved }: { sessionId: string; kind: "reinforcement" | "withdrawal"; onSaved: () => void }) {
@@ -269,11 +205,12 @@ function FinanceExportDialog({ today }: { today: string }) {
     { type: "receipts", label: "Recebimentos", description: "Pagamentos recebidos no período" },
     { type: "expenses", label: "Despesas pagas", description: "Pagamentos feitos a fornecedores e contas" },
     { type: "balances", label: "Saldos em aberto", description: "Valores a receber e a pagar por vencimento" },
-  ];
+  ] as const;
 
-  function download(type: string) {
+  function download(type: "sales" | "receipts" | "expenses" | "balances") {
     const params = new URLSearchParams({ from, to });
-    const route = type === "sales" ? "/api/exports/sales" : `/api/exports/finance?type=${type}`;
+    const route = type === "sales" ? "/api/exports/sales" : "/api/exports/finance";
+    if (type !== "sales") params.set("type", type);
     setOpen(false);
     const link = document.createElement("a");
     link.href = `${route}?${params.toString()}`;
@@ -287,9 +224,9 @@ function FinanceExportDialog({ today }: { today: string }) {
     <Button type="button" variant="outline" className="h-9 gap-2 rounded-md px-3 text-[11px]" onClick={() => setOpen(true)}><LuDownload className="size-3.5" /> Exportar período</Button>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader><DialogTitle className="text-[17px]">Exportar dados financeiros</DialogTitle><DialogDescription className="text-[11px]">Selecione o período. Os arquivos CSV incluem todos os registros que atendem às datas, mesmo que não estejam visíveis na tabela.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle className="text-[17px]">Exportar dados financeiros</DialogTitle><DialogDescription className="text-[11px]">Selecione o período. Os arquivos XLSX incluem todos os registros que atendem às datas, mesmo que não estejam visíveis na tabela.</DialogDescription></DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5"><Label htmlFor="export-from">De</Label><DatePickerField id="export-from" value={from} max={to || undefined} onValueChange={setFrom} /></div>
+          <div className="space-y-1.5"><Label htmlFor="export-from">De</Label><DatePickerField id="export-from" value={from} min={addCivilDays(today, -365)} max={to || undefined} onValueChange={setFrom} /></div>
           <div className="space-y-1.5"><Label htmlFor="export-to">Até</Label><DatePickerField id="export-to" value={to} max={today} min={from || undefined} onValueChange={setTo} /></div>
         </div>
         {!canExport ? <p role="alert" className="text-[11px] text-destructive">A data inicial precisa ser anterior ou igual à data final.</p> : null}
@@ -322,7 +259,7 @@ export function FinanceView({ overview, timezone, today }: { overview: FinanceOv
   const cashIn = overview.cashMovements.filter((movement) => movement.amount_cents > 0).reduce((sum, movement) => sum + movement.amount_cents, 0);
 
   return <div className="space-y-5">
-    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Financeiro</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Clareza para acompanhar o dinheiro da sua loja.</p></div><div className="flex flex-wrap gap-2"><FinanceExportDialog today={today} /><ExpenseDialog overview={overview} timezone={timezone} onSaved={() => router.refresh()} /></div></div>
+    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Financeiro</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Clareza para acompanhar o dinheiro da sua loja.</p></div><div className="flex flex-wrap gap-2"><FinanceExportDialog today={today} /></div></div>
     <section className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
       <Card className="gap-0 rounded-[10px] border-border/90 p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="flex items-center justify-between text-[10px] text-muted-foreground">Recebido nas vendas<LuBanknote className="size-4" /></div><p className="mt-4 text-[25px] font-semibold tabular-nums">{formatMoney(overview.receivedTodayCents)}</p><p className="mt-2 text-[10px] text-muted-foreground">Pagamentos recebidos hoje</p></Card>
       <Card className="gap-0 rounded-[10px] border-border/90 p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="flex items-center justify-between text-[10px] text-muted-foreground">A receber<LuClock3 className="size-4" /></div><p className="mt-4 text-[25px] font-semibold tabular-nums">{formatMoney(overview.receivableTotalCents)}</p><p className="mt-2 text-[10px] text-muted-foreground">Saldos pendentes de clientes</p></Card>
@@ -330,19 +267,19 @@ export function FinanceView({ overview, timezone, today }: { overview: FinanceOv
       <Card className="gap-0 rounded-[10px] border-border/90 p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="flex items-center justify-between text-[10px] text-muted-foreground">Despesas registradas<LuReceiptText className="size-4" /></div><p className="mt-4 text-[25px] font-semibold tabular-nums">{formatMoney(overview.expensesTodayCents)}</p><p className="mt-2 text-[10px] text-muted-foreground">Pagamentos e saídas de hoje</p></Card>
     </section>
     <Tabs value={tab} onValueChange={setTab}>
-      <TabsList className="h-9"><TabsTrigger value="cash" className="px-4 text-[11px]">Caixa</TabsTrigger><TabsTrigger value="receivables" className="px-4 text-[11px]">A receber</TabsTrigger><TabsTrigger value="payables" className="px-4 text-[11px]">A pagar</TabsTrigger></TabsList>
+      <TabsList className="h-9"><TabsTrigger value="cash" className="gap-1.5 px-4 text-[11px]"><LuWallet className="size-3.5" />Caixa</TabsTrigger><TabsTrigger value="receivables" className="gap-1.5 px-4 text-[11px]"><LuArrowDown className="size-3.5" />A receber</TabsTrigger><TabsTrigger value="payables" className="gap-1.5 px-4 text-[11px]"><LuReceiptText className="size-3.5" />A pagar</TabsTrigger></TabsList>
       <TabsContent value="cash" className="mt-4 space-y-4">
         {overview.cashSession ? <>
           <section className="grid gap-3 md:grid-cols-3"><Card className="gap-0 rounded-[10px] border-border/90 p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><p className="text-[10px] text-muted-foreground">Fundo de abertura</p><p className="mt-2 text-[23px] font-semibold tabular-nums">{formatMoney(overview.cashSession.opening_cents)}</p></Card><Card className="gap-0 rounded-[10px] border-border/90 p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><p className="text-[10px] text-muted-foreground">Entradas em dinheiro</p><p className="mt-2 text-[23px] font-semibold tabular-nums">{formatMoney(cashIn)}</p></Card><Card className="gap-0 rounded-[10px] border-border/90 p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><p className="text-[10px] text-muted-foreground">Dinheiro esperado em caixa</p><p className="mt-2 text-[23px] font-semibold tabular-nums">{formatMoney(overview.cashSession.expected_cents)}</p></Card></section>
           <Card className="gap-0 overflow-hidden rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="flex flex-col justify-between gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:px-5"><div><div className="flex items-center gap-2 text-[12px] font-semibold"><span className="size-2 rounded-full bg-emerald-500" />Caixa aberto</div><p className="mt-1 text-[10px] text-muted-foreground">Abertura: {formatShortDate(overview.cashSession.opened_at, timezone)}, {formatTime(overview.cashSession.opened_at, timezone)}</p></div><CloseCashDialog session={overview.cashSession} onSaved={() => router.refresh()} /></div>
             <div className="space-y-0 px-4 py-3 sm:px-5"><div className="flex items-center justify-between border-b border-border py-3 text-[11px]"><span className="text-muted-foreground">Fundo inicial para troco</span><span className="tabular-nums">{formatMoney(overview.cashSession.opening_cents)}</span></div>{overview.cashMovements.map((movement) => <div key={movement.id} className="flex items-center justify-between gap-4 border-b border-border py-3 text-[11px]"><span className="min-w-0"><span className="block truncate font-medium">{movementLabels[movement.kind] ?? movement.kind}</span><span className="mt-1 block truncate text-[10px] text-muted-foreground">{movement.reason} · {formatTime(movement.occurred_at, timezone)}</span></span><span className={movement.amount_cents < 0 ? "shrink-0 tabular-nums text-destructive" : "shrink-0 tabular-nums"}>{formatMoney(movement.amount_cents)}</span></div>)}<div className="flex items-center justify-between py-3 text-[11px] font-semibold"><span>Dinheiro esperado</span><span className="tabular-nums">{formatMoney(overview.cashSession.expected_cents)}</span></div></div>
-            <div className="flex flex-wrap gap-2 border-t border-border px-4 py-3 sm:px-5"><CashMovementDialog sessionId={overview.cashSession.id} kind="reinforcement" onSaved={() => router.refresh()} /><CashMovementDialog sessionId={overview.cashSession.id} kind="withdrawal" onSaved={() => router.refresh()} /><ExpenseCategoryDialog /></div>
+            <div className="flex flex-wrap gap-2 border-t border-border px-4 py-3 sm:px-5"><CashMovementDialog sessionId={overview.cashSession.id} kind="reinforcement" onSaved={() => router.refresh()} /><CashMovementDialog sessionId={overview.cashSession.id} kind="withdrawal" onSaved={() => router.refresh()} /></div>
           </Card>
-        </> : <Card className="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-[10px] border-border/90 p-6 text-center shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground"><LuWallet className="size-4" /></span><div><h2 className="text-[13px] font-semibold">Caixa fechado</h2><p className="mt-1 text-[11px] text-muted-foreground">Abra uma sessão para registrar pagamentos e movimentos em dinheiro.</p></div><OpenCashDialog onSaved={() => router.refresh()} /></Card>}
+        </> : <Card className="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-[10px] border-border/90 p-6 text-center shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground"><LuWallet className="size-4" /></span><div><h2 className="text-[13px] font-semibold">Caixa fechado</h2><p className="mt-1 text-[11px] text-muted-foreground">Abra uma sessão para registrar pagamentos e movimentos em dinheiro.</p></div><OpenCashDialog /></Card>}
         {overview.closedSessions.length ? <Card className="gap-0 overflow-hidden rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="border-b border-border px-4 py-3 text-[11px] font-semibold sm:px-5">Histórico de fechamentos</div>{overview.closedSessions.map((session) => <div key={session.id} className="grid gap-2 border-b border-border px-4 py-3 text-[10px] last:border-0 sm:grid-cols-[1.2fr_1fr_1fr_1fr] sm:px-5"><span>{formatShortDate(session.closed_at, timezone)} · {formatTime(session.closed_at, timezone)}</span><span className="text-muted-foreground">Esperado {formatMoney(session.expected_cents)}</span><span className="text-muted-foreground">Contado {formatMoney(session.counted_cents)}</span><span className={session.difference_cents < 0 ? "font-medium text-destructive" : "font-medium"}>Diferença {formatMoney(session.difference_cents)}</span></div>)}</Card> : null}
       </TabsContent>
       <TabsContent value="receivables" className="mt-4"><Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><DataTable columns={receivableColumns} data={overview.receivables} searchPlaceholder="Buscar por cliente ou venda…" emptyMessage="Nenhum saldo a receber." toolbarActions={<span className="px-2 text-[10px] text-muted-foreground">{overview.receivables.length} contas abertas</span>} /></Card></TabsContent>
-      <TabsContent value="payables" className="mt-4 space-y-3"><div className="flex justify-end"><ExpenseCategoryDialog /></div><Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><DataTable columns={payableColumns} data={overview.payables} searchPlaceholder="Buscar por descrição, fornecedor ou categoria…" emptyMessage="Nenhuma conta a pagar." toolbarActions={<span className="px-2 text-[10px] text-muted-foreground">{overview.payables.length} contas abertas</span>} /></Card></TabsContent>
+      <TabsContent value="payables" className="mt-4 space-y-3"><div className="flex flex-wrap justify-end gap-2"><ExpenseCategoryDialog /><ExpenseDialog overview={overview} timezone={timezone} onSaved={() => router.refresh()} /></div><Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><DataTable columns={payableColumns} data={overview.payables} searchPlaceholder="Buscar por descrição, fornecedor ou categoria…" emptyMessage="Nenhuma conta a pagar." toolbarActions={<span className="px-2 text-[10px] text-muted-foreground">{overview.payables.length} contas abertas</span>} /></Card></TabsContent>
     </Tabs>
   </div>;
 }

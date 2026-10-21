@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getUserContext } from "@/lib/auth/context";
+import { hasValidQuantityPrecision, parseQuantityForUnit, quantityPrecision } from "@/lib/business-rules";
 import { parseMoneyToCents, parseQuantity } from "@/lib/inputs";
 import { createClient } from "@/lib/supabase/server";
 
@@ -14,7 +15,6 @@ const productSchema = z.object({
   barcode: z.string().trim().max(80),
   categoryId: z.union([z.string().uuid(), z.literal("")]),
   unit: z.enum(["un", "kg", "g", "L", "ml", "pacote", "caixa"]),
-  precision: z.coerce.number().int().min(0).max(3),
   minimumStock: z.string().trim().max(40),
   trackLots: z.boolean(),
   salePrice: z.string().trim().min(1).max(40),
@@ -107,12 +107,9 @@ export async function createProduct(input: unknown) {
   if (!parsed.success) return { ok: false, message: "Confira os dados do produto." };
   const salePriceCents = parseMoneyToCents(parsed.data.salePrice);
   const averageCostCents = parseMoneyToCents(parsed.data.averageCost);
-  const minimumStock = parseQuantity(parsed.data.minimumStock || "0");
+  const minimumStock = parseQuantityForUnit(parsed.data.minimumStock || "0", parsed.data.unit);
   if (salePriceCents === null || averageCostCents === null || minimumStock === null) {
     return { ok: false, message: "Informe preços e estoque mínimo válidos." };
-  }
-  if (parsed.data.precision === 0 && !["un", "pacote", "caixa"].includes(parsed.data.unit)) {
-    return { ok: false, message: "Unidades fracionáveis precisam de precisão decimal." };
   }
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
@@ -126,7 +123,7 @@ export async function createProduct(input: unknown) {
     barcode: parsed.data.barcode || null,
     category_id: parsed.data.categoryId || null,
     unit: parsed.data.unit,
-    unit_precision: parsed.data.precision,
+    unit_precision: quantityPrecision(parsed.data.unit),
     sale_price_cents: salePriceCents,
     average_cost_cents: averageCostCents,
     minimum_stock: minimumStock,
@@ -152,11 +149,14 @@ export async function updateProduct(input: unknown) {
   }).safeParse(input);
   if (!parsed.success) return { ok: false, message: "Confira os dados do produto." };
   const salePriceCents = parseMoneyToCents(parsed.data.salePrice);
-  const minimumStock = parseQuantity(parsed.data.minimumStock || "0");
-  if (salePriceCents === null || minimumStock === null) return { ok: false, message: "Informe valores válidos para preço e estoque mínimo." };
+  if (salePriceCents === null) return { ok: false, message: "Informe valores válidos para o preço." };
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
   const supabase = await createClient();
+  const productResult = await supabase.from("products").select("id, unit").eq("store_id", context.store.id).eq("id", parsed.data.id).is("archived_at", null).maybeSingle();
+  if (productResult.error || !productResult.data) return { ok: false, message: "Produto não encontrado." };
+  const minimumStock = parseQuantityForUnit(parsed.data.minimumStock || "0", productResult.data.unit);
+  if (minimumStock === null) return { ok: false, message: `O estoque mínimo precisa respeitar a unidade ${productResult.data.unit}.` };
   const { data, error } = await supabase.from("products").update({
     name: parsed.data.name,
     description: parsed.data.description || null,
@@ -169,7 +169,7 @@ export async function updateProduct(input: unknown) {
   }).eq("store_id", context.store.id).eq("id", parsed.data.id).is("archived_at", null).select("id").maybeSingle();
   if (error) return { ok: false, message: error.code === "23505" ? "SKU ou código de barras já cadastrado." : "Não foi possível atualizar o produto." };
   if (!data) return { ok: false, message: "Produto não encontrado." };
-  for (const path of ["/estoque", "/dashboard", "/vendas/nova"]) revalidatePath(path);
+  for (const path of ["/estoque", "/dashboard", "/vendas"]) revalidatePath(path);
   return { ok: true };
 }
 
@@ -181,7 +181,7 @@ export async function archiveProduct(productId: string) {
   const supabase = await createClient();
   const { error } = await supabase.rpc("archive_product", { p_store: context.store.id, p_product: parsed.data });
   if (error) return { ok: false, message: businessError(error.message) };
-  for (const path of ["/estoque", "/dashboard", "/vendas/nova"]) revalidatePath(path);
+  for (const path of ["/estoque", "/dashboard", "/vendas"]) revalidatePath(path);
   return { ok: true };
 }
 
@@ -199,16 +199,17 @@ export async function saveProductPackaging(input: unknown) {
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
   const supabase = await createClient();
-  const { data: product, error: productError } = await supabase.from("products").select("id, unit_precision").eq("store_id", context.store.id).eq("id", parsed.data.productId).is("archived_at", null).maybeSingle();
+  const { data: product, error: productError } = await supabase.from("products").select("id, unit").eq("store_id", context.store.id).eq("id", parsed.data.productId).is("archived_at", null).maybeSingle();
   if (productError || !product) return { ok: false, message: "O produto não está disponível." };
-  if (Number(baseQuantity.toFixed(product.unit_precision)) !== baseQuantity) return { ok: false, message: `A conversão precisa respeitar ${product.unit_precision} casas decimais.` };
+  const precision = quantityPrecision(product.unit);
+  if (!hasValidQuantityPrecision(baseQuantity, product.unit)) return { ok: false, message: `A conversão precisa respeitar a precisão da unidade ${product.unit} (${precision} casas decimais).` };
   const values = { label: parsed.data.label, barcode: parsed.data.barcode || null, base_quantity: baseQuantity };
   const { error } = parsed.data.packagingId
     ? await supabase.from("product_packagings").update(values).eq("store_id", context.store.id).eq("product_id", product.id).eq("id", parsed.data.packagingId)
     : await supabase.from("product_packagings").insert({ ...values, store_id: context.store.id, product_id: product.id });
   if (error) return { ok: false, message: error.code === "23505" ? "Esse código de barras já está cadastrado no catálogo." : "Não foi possível cadastrar a embalagem." };
   revalidatePath("/estoque");
-  revalidatePath("/vendas/nova");
+  revalidatePath("/vendas");
   return { ok: true };
 }
 
@@ -221,7 +222,7 @@ export async function deleteProductPackaging(productId: string, packagingId: str
   const { error } = await supabase.from("product_packagings").delete().eq("store_id", context.store.id).eq("product_id", parsed.data.productId).eq("id", parsed.data.packagingId);
   if (error) return { ok: false, message: "Não foi possível remover a embalagem." };
   revalidatePath("/estoque");
-  revalidatePath("/vendas/nova");
+  revalidatePath("/vendas");
   return { ok: true };
 }
 
@@ -234,11 +235,13 @@ export async function adjustStock(input: { productId: string; counted: string; r
     key: z.string().uuid(),
   }).safeParse(input);
   if (!parsed.success) return { ok: false, message: "Informe uma quantidade e um motivo." };
-  const counted = parseQuantity(parsed.data.counted);
-  if (counted === null) return { ok: false, message: "A quantidade informada não é válida." };
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
   const supabase = await createClient();
+  const { data: product, error: productError } = await supabase.from("products").select("id, unit").eq("store_id", context.store.id).eq("id", parsed.data.productId).is("archived_at", null).maybeSingle();
+  if (productError || !product) return { ok: false, message: "O produto não está disponível." };
+  const counted = parseQuantityForUnit(parsed.data.counted, product.unit);
+  if (counted === null) return { ok: false, message: `Informe uma quantidade válida para a unidade ${product.unit}.` };
   const { error } = await supabase.rpc("adjust_stock", {
     p_store: context.store.id,
     p_product: parsed.data.productId,
@@ -263,12 +266,19 @@ export async function convertToBulk(input: unknown) {
     key: z.string().uuid(),
   }).safeParse(input);
   if (!parsed.success || parsed.data.sourceProductId === parsed.data.targetProductId) return { ok: false, message: "Selecione dois produtos diferentes e confira a conversão." };
-  const sourceQuantity = parseQuantity(parsed.data.sourceQuantity);
-  const targetPerSource = parseQuantity(parsed.data.targetPerSource);
-  if (sourceQuantity === null || sourceQuantity <= 0 || targetPerSource === null || targetPerSource <= 0) return { ok: false, message: "Informe quantidades positivas e válidas." };
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
   const supabase = await createClient();
+  const { data: products, error: productsError } = await supabase.from("products").select("id, unit").eq("store_id", context.store.id).in("id", [parsed.data.sourceProductId, parsed.data.targetProductId]).is("archived_at", null);
+  if (productsError || products?.length !== 2) return { ok: false, message: "Os produtos da conversão não estão disponíveis." };
+  const sourceProduct = products.find((product) => product.id === parsed.data.sourceProductId);
+  const targetProduct = products.find((product) => product.id === parsed.data.targetProductId);
+  const sourceQuantity = sourceProduct ? parseQuantityForUnit(parsed.data.sourceQuantity, sourceProduct.unit) : null;
+  const targetPerSource = targetProduct ? parseQuantityForUnit(parsed.data.targetPerSource, targetProduct.unit) : null;
+  if (sourceQuantity === null || sourceQuantity <= 0 || targetPerSource === null || targetPerSource <= 0
+    || !hasValidQuantityPrecision(sourceQuantity * targetPerSource, targetProduct?.unit ?? "un")) {
+    return { ok: false, message: "Informe quantidades válidas para as unidades dos produtos." };
+  }
   const { error } = await supabase.rpc("convert_to_bulk", {
     p_store: context.store.id,
     p_source_product: parsed.data.sourceProductId,
@@ -279,7 +289,7 @@ export async function convertToBulk(input: unknown) {
     p_key: parsed.data.key,
   });
   if (error) return { ok: false, message: businessError(error.message) };
-  for (const path of ["/estoque", "/dashboard", "/vendas/nova"]) revalidatePath(path);
+  for (const path of ["/estoque", "/dashboard", "/vendas"]) revalidatePath(path);
   return { ok: true };
 }
 
@@ -304,7 +314,7 @@ export async function startInventoryCount(notes = "") {
   const productIds = [...new Set(items.map((item) => item.product_id))];
   const lotIds = [...new Set(items.map((item) => item.lot_id).filter((id): id is string => Boolean(id)))];
   const [productsResult, lotsResult] = await Promise.all([
-    supabase.from("products").select("id, name, unit, unit_precision").eq("store_id", context.store.id).in("id", productIds),
+    supabase.from("products").select("id, name, unit").eq("store_id", context.store.id).in("id", productIds),
     lotIds.length ? supabase.from("inventory_lots").select("id, code").eq("store_id", context.store.id).in("id", lotIds) : Promise.resolve({ data: [], error: null }),
   ]);
   if (productsResult.error || lotsResult.error) return { ok: false as const, message: "A contagem foi iniciada, mas não foi possível carregar os itens." };
@@ -318,7 +328,7 @@ export async function startInventoryCount(notes = "") {
       productId: item.product_id,
       product: products.get(item.product_id)?.name ?? "Produto",
       unit: products.get(item.product_id)?.unit ?? "un",
-      precision: products.get(item.product_id)?.unit_precision ?? 0,
+      precision: quantityPrecision(products.get(item.product_id)?.unit ?? "un"),
       lotId: item.lot_id,
       lotCode: item.lot_id ? lots.get(item.lot_id) ?? "Lote" : null,
       expected: item.expected_quantity,
@@ -340,6 +350,19 @@ export async function completeInventoryCount(countId: string, lines: { itemId: s
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
   const supabase = await createClient();
+  const itemIds = parsed.data.lines.map((line) => line.itemId);
+  const { data: countItems, error: countItemsError } = await supabase.from("inventory_count_items")
+    .select("id, product_id").eq("store_id", context.store.id).eq("count_id", parsed.data.countId).in("id", itemIds);
+  if (countItemsError || countItems?.length !== itemIds.length) return { ok: false, message: "A contagem mudou. Atualize os itens antes de salvar." };
+  const productIds = [...new Set(countItems.map((item) => item.product_id))];
+  const { data: products, error: productsError } = await supabase.from("products").select("id, unit").eq("store_id", context.store.id).in("id", productIds);
+  if (productsError || !products) return { ok: false, message: "Não foi possível conferir as unidades dos produtos." };
+  const unitByProduct = new Map(products.map((product) => [product.id, product.unit]));
+  const productByItem = new Map(countItems.map((item) => [item.id, item.product_id]));
+  if (parsed.data.lines.some((line) => {
+    const unit = unitByProduct.get(productByItem.get(line.itemId) ?? "");
+    return !unit || !hasValidQuantityPrecision(line.counted, unit);
+  })) return { ok: false, message: "Há quantidades que não respeitam a precisão da unidade do produto." };
   const { error: saveError } = await supabase.rpc("save_inventory_count", {
     p_store: context.store.id,
     p_count: parsed.data.countId,
@@ -366,6 +389,17 @@ export async function receiveGoods(input: unknown) {
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
   const supabase = await createClient();
+  const productIds = [...new Set(parsed.data.items.map((item) => item.productId))];
+  const { data: products, error: productsError } = await supabase.from("products").select("id, unit").eq("store_id", context.store.id).in("id", productIds).is("archived_at", null);
+  if (productsError || products?.length !== productIds.length) return { ok: false, message: "Há produtos indisponíveis neste recebimento." };
+  const unitByProduct = new Map(products.map((product) => [product.id, product.unit]));
+  if (parsed.data.items.some((item) => {
+    const unit = unitByProduct.get(item.productId);
+    const quantity = item.packages * item.conversionFactor;
+    return !unit || !hasValidQuantityPrecision(item.packages, "un")
+      || !hasValidQuantityPrecision(item.conversionFactor, unit)
+      || !hasValidQuantityPrecision(quantity, unit);
+  })) return { ok: false, message: "Confira as unidades e quantidades dos itens recebidos." };
   const { error } = await supabase.rpc("receive_goods", {
     p_store: context.store.id,
     p_supplier: parsed.data.supplierId || null,

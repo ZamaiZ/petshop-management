@@ -45,12 +45,14 @@ export function DataTable<TData extends RowData>({
   searchPlaceholder = "Buscar…",
   emptyMessage = "Nenhum registro encontrado.",
   toolbarActions,
+  hideSearch = false,
 }: {
   columns: DataTableColumn<TData>[];
   data: TData[];
   searchPlaceholder?: string;
   emptyMessage?: string;
   toolbarActions?: ReactNode;
+  hideSearch?: boolean;
 }) {
   const stableData = useMemo(() => data, [data]);
   const table = useTable({
@@ -63,8 +65,8 @@ export function DataTable<TData extends RowData>({
 
   return (
     <div className="overflow-hidden rounded-[10px] border border-border bg-card shadow-[0_1px_2px_rgba(16,24,40,0.03)]">
-      <div className="flex flex-col justify-between gap-3 border-b border-border px-4 py-3.5 sm:flex-row sm:items-center sm:px-5">
-        <div className="relative w-full max-w-[310px]">
+      {!hideSearch || toolbarActions ? <div className="flex flex-col justify-between gap-3 border-b border-border px-4 py-3.5 sm:flex-row sm:items-center sm:px-5">
+        {!hideSearch ? <div className="relative w-full max-w-[310px]">
           <LuSearch className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
             value={table.state.globalFilter ?? ""}
@@ -73,9 +75,9 @@ export function DataTable<TData extends RowData>({
             aria-label={searchPlaceholder}
             className="h-9 rounded-md pl-9 text-[11px]"
           />
-        </div>
+        </div> : null}
         {toolbarActions ? <div className="flex flex-wrap items-center gap-2">{toolbarActions}</div> : null}
-      </div>
+      </div> : null}
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>

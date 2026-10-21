@@ -1,5 +1,6 @@
 import { getUserContext } from "@/lib/auth/context";
-import { csvResponse, getExportPeriod } from "@/lib/csv-export";
+import { getExportPeriod } from "@/lib/export-period";
+import { excelDate, excelDateTime, xlsxResponse, type XlsxValue } from "@/lib/xlsx-export";
 import { createClient } from "@/lib/supabase/server";
 
 type PageResult<T> = { data: T[] | null; error: { message: string } | null };
@@ -15,14 +16,6 @@ async function readPages<T>(load: (from: number, to: number) => PromiseLike<Page
   return { rows: null, error: { message: "maximum_page_count" } };
 }
 
-function money(cents: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
-}
-
-function dateTime(value: string, timezone: string) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: timezone }).format(new Date(value));
-}
-
 function dateInPeriod(value: string | null, from: string, to: string) {
   return value === null || (value >= from && value <= to);
 }
@@ -35,7 +28,8 @@ async function exportReceipts(storeId: string, timezone: string, period: NonNull
     .order("received_at", { ascending: true }).range(from, to));
   if (paymentsResult.error || !paymentsResult.rows) return null;
 
-  const rows: (string | number)[][] = [["Data e hora", "Venda", "Cliente", "Forma de pagamento", "Recebido", "Valor entregue", "Troco"]];
+  const headers = ["Data e hora", "Venda", "Cliente", "Forma de pagamento", "Recebido", "Valor entregue", "Troco"];
+  const rows: XlsxValue[][] = [];
   const methods: Record<string, string> = { cash: "Dinheiro", pix: "Pix", debit_card: "Cartão de débito", credit_card: "Cartão de crédito" };
   for (let offset = 0; offset < paymentsResult.rows.length; offset += 200) {
     const batch = paymentsResult.rows.slice(offset, offset + 200);
@@ -52,17 +46,17 @@ async function exportReceipts(storeId: string, timezone: string, period: NonNull
     for (const payment of batch) {
       const sale = sales.get(payment.sale_id);
       rows.push([
-        dateTime(payment.received_at, timezone),
+        excelDateTime(payment.received_at, timezone),
         sale ? `Venda #${sale.number}` : "Venda",
         sale?.customer_id ? customers.get(sale.customer_id) ?? "Cliente" : "Cliente avulso",
         methods[payment.method] ?? payment.method,
-        money(payment.amount_cents),
-        payment.tendered_cents === null ? "—" : money(payment.tendered_cents),
-        payment.change_cents === null ? "—" : money(payment.change_cents),
+        payment.amount_cents / 100,
+        payment.tendered_cents === null ? null : payment.tendered_cents / 100,
+        payment.change_cents === null ? null : payment.change_cents / 100,
       ]);
     }
   }
-  return csvResponse(`recebimentos-${period.from}-${period.to}.csv`, rows);
+  return xlsxResponse(`recebimentos-${period.from}-${period.to}.xlsx`, "Recebimentos", headers, rows);
 }
 
 async function exportExpenses(storeId: string, timezone: string, period: NonNullable<ReturnType<typeof getExportPeriod>>) {
@@ -73,7 +67,8 @@ async function exportExpenses(storeId: string, timezone: string, period: NonNull
     .order("paid_at", { ascending: true }).range(from, to));
   if (paymentsResult.error || !paymentsResult.rows) return null;
 
-  const rows: (string | number)[][] = [["Data e hora", "Descrição", "Fornecedor", "Categoria", "Forma de pagamento", "Valor pago"]];
+  const headers = ["Data e hora", "Descrição", "Fornecedor", "Categoria", "Forma de pagamento", "Valor pago"];
+  const rows: XlsxValue[][] = [];
   const methods: Record<string, string> = { cash: "Dinheiro", pix: "Pix", debit_card: "Cartão de débito", credit_card: "Cartão de crédito", transfer: "Transferência" };
   for (let offset = 0; offset < paymentsResult.rows.length; offset += 200) {
     const batch = paymentsResult.rows.slice(offset, offset + 200);
@@ -93,16 +88,16 @@ async function exportExpenses(storeId: string, timezone: string, period: NonNull
     for (const payment of batch) {
       const payable = payables.get(payment.payable_id);
       rows.push([
-        dateTime(payment.paid_at, timezone),
+        excelDateTime(payment.paid_at, timezone),
         payable?.description ?? "Conta",
         payable?.supplier_id ? suppliers.get(payable.supplier_id) ?? "Fornecedor" : "—",
         payable?.category_id ? categories.get(payable.category_id) ?? "—" : "—",
         methods[payment.method] ?? payment.method,
-        money(payment.amount_cents),
+        payment.amount_cents / 100,
       ]);
     }
   }
-  return csvResponse(`despesas-${period.from}-${period.to}.csv`, rows);
+  return xlsxResponse(`despesas-${period.from}-${period.to}.xlsx`, "Despesas pagas", headers, rows);
 }
 
 async function exportBalances(storeId: string, period: NonNullable<ReturnType<typeof getExportPeriod>>) {
@@ -116,7 +111,8 @@ async function exportBalances(storeId: string, period: NonNullable<ReturnType<ty
   if (receivablesResult.error || payablesResult.error || !receivablesResult.rows || !payablesResult.rows) return null;
   const receivables = receivablesResult.rows.filter((item) => item.remaining_cents > 0 && dateInPeriod(item.due_on, period.from, period.to));
   const payables = payablesResult.rows.filter((item) => item.remaining_cents > 0 && dateInPeriod(item.due_on, period.from, period.to));
-  const rows: (string | number)[][] = [["Tipo", "Referência", "Vencimento", "Cliente ou fornecedor", "Valor original", "Saldo em aberto"]];
+  const headers = ["Tipo", "Referência", "Vencimento", "Cliente ou fornecedor", "Valor original", "Saldo em aberto"];
+  const rows: XlsxValue[][] = [];
 
   for (let offset = 0; offset < receivables.length; offset += 200) {
     const batch = receivables.slice(offset, offset + 200);
@@ -132,10 +128,10 @@ async function exportBalances(storeId: string, period: NonNullable<ReturnType<ty
     for (const item of batch) rows.push([
       "A receber",
       `Venda #${sales.get(item.sale_id) ?? "—"}`,
-      item.due_on ?? "Sem vencimento",
+      excelDate(item.due_on),
       customers.get(item.customer_id) ?? "Cliente",
-      money(item.original_cents),
-      money(item.remaining_cents),
+      item.original_cents / 100,
+      item.remaining_cents / 100,
     ]);
   }
 
@@ -150,13 +146,13 @@ async function exportBalances(storeId: string, period: NonNullable<ReturnType<ty
     for (const item of batch) rows.push([
       "A pagar",
       item.description,
-      item.due_on,
+      excelDate(item.due_on),
       item.supplier_id ? suppliers.get(item.supplier_id) ?? "Fornecedor" : "Loja",
-      money(item.original_cents),
-      money(item.remaining_cents),
+      item.original_cents / 100,
+      item.remaining_cents / 100,
     ]);
   }
-  return csvResponse(`saldos-${period.from}-${period.to}.csv`, rows);
+  return xlsxResponse(`saldos-${period.from}-${period.to}.xlsx`, "Saldos em aberto", headers, rows);
 }
 
 export async function GET(request: Request) {

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { quantityPrecision } from "@/lib/business-rules";
 import { createClient } from "@/lib/supabase/server";
 import { dashboardOverviewSchema } from "@/features/dashboard/schema";
 import { dateKeyAtTimeZone } from "@/lib/date";
@@ -29,6 +30,8 @@ export type SaleRecord = {
   subtotal_cents: number;
   discount_cents: number;
   delivery_fee_cents: number;
+  has_delivery: boolean;
+  delivery_status: string | null;
   total_cents: number;
   paid_cents: number;
   receivable_cents: number;
@@ -54,24 +57,26 @@ async function getSalesRows(storeId: string) {
     .neq("status", "draft")
     .order("completed_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
-    .limit(200);
+    .limit(1000);
   if (salesResult.error) return { rows: null, error: "Não foi possível carregar o histórico de vendas." };
   if (!salesResult.data.length) return { rows: [] as SaleRecord[], error: null };
 
   const saleIds = salesResult.data.map((sale) => sale.id);
   const customerIds = [...new Set(salesResult.data.map((sale) => sale.customer_id).filter((id): id is string => Boolean(id)))];
-  const [customersResult, receivablesResult, itemsResult, paymentsResult, returnsResult] = await Promise.all([
+  const [customersResult, receivablesResult, itemsResult, paymentsResult, returnsResult, deliveriesResult] = await Promise.all([
     customerIds.length ? supabase.from("customers").select("id, name").eq("store_id", storeId).in("id", customerIds) : Promise.resolve({ data: [], error: null }),
     supabase.from("receivables").select("sale_id, remaining_cents, status").eq("store_id", storeId).in("sale_id", saleIds),
     readPages((from, to) => supabase.from("sale_items").select("id, sale_id, product_id, description, quantity, unit, line_total_cents").eq("store_id", storeId).in("sale_id", saleIds).order("created_at").range(from, to)),
     readPages((from, to) => supabase.from("payments").select("sale_id, method, amount_cents, tendered_cents, change_cents").eq("store_id", storeId).in("sale_id", saleIds).order("received_at").range(from, to)),
     readPages((from, to) => supabase.from("sale_return_items").select("sale_id, sale_item_id, quantity").eq("store_id", storeId).in("sale_id", saleIds).order("created_at").range(from, to)),
+    supabase.from("deliveries").select("sale_id, status").eq("store_id", storeId).in("sale_id", saleIds),
   ]);
-  if (customersResult.error || receivablesResult.error || itemsResult.error || paymentsResult.error || returnsResult.error || !itemsResult.rows || !paymentsResult.rows || !returnsResult.rows) {
+  if (customersResult.error || receivablesResult.error || itemsResult.error || paymentsResult.error || returnsResult.error || deliveriesResult.error || !itemsResult.rows || !paymentsResult.rows || !returnsResult.rows) {
     return { rows: null, error: "Não foi possível carregar os itens e pagamentos das vendas." };
   }
 
   const customerNames = new Map(customersResult.data.map((customer) => [customer.id, customer.name]));
+  const deliveryBySale = new Map(deliveriesResult.data.map((delivery) => [delivery.sale_id, delivery.status]));
   const balanceBySale = new Map(receivablesResult.data.map((receivable) => [receivable.sale_id, receivable.status === "open" ? receivable.remaining_cents : 0]));
   const itemsBySale = new Map<string, SaleRecord["items"]>();
   const returnedByItem = new Map<string, number>();
@@ -99,6 +104,8 @@ async function getSalesRows(storeId: string) {
     rows: salesResult.data.map((sale) => ({
       ...sale,
       customer: sale.customer_id ? customerNames.get(sale.customer_id) ?? "Cliente" : "Cliente avulso",
+      has_delivery: deliveryBySale.has(sale.id),
+      delivery_status: deliveryBySale.get(sale.id) ?? null,
       paid_cents: paidBySale.get(sale.id) ?? 0,
       receivable_cents: balanceBySale.get(sale.id) ?? 0,
       payment_methods: [...(methodsBySale.get(sale.id) ?? new Set<string>())],
@@ -140,7 +147,7 @@ export async function getSalesOverview(storeId: string) {
 export async function getSaleComposerData(storeId: string, timezone: string) {
   const supabase = await createClient();
   const [productsResult, servicesResult, categoriesResult, customersResult, cashResult, appointmentResult] = await Promise.all([
-    supabase.from("products").select("id, name, barcode, sku, unit, unit_precision, sale_price_cents, category_id, track_lots").eq("store_id", storeId).is("archived_at", null).order("name").limit(1000),
+    supabase.from("products").select("id, name, barcode, sku, unit, sale_price_cents, category_id, track_lots").eq("store_id", storeId).is("archived_at", null).order("name").limit(1000),
     supabase.from("services").select("id, name, price_cents, duration_minutes").eq("store_id", storeId).is("archived_at", null).order("name").limit(500),
     supabase.from("categories").select("id, name").eq("store_id", storeId).is("archived_at", null).order("name").limit(500),
     supabase.from("customers").select("id, name, phone").eq("store_id", storeId).is("archived_at", null).order("name").limit(1000),
@@ -175,7 +182,7 @@ export async function getSaleComposerData(storeId: string, timezone: string) {
   }
   return {
     data: {
-      products: productsResult.data.map((product) => ({ ...product, quantity: product.track_lots ? sellableLotQuantity.get(product.id) ?? 0 : balances.get(product.id) ?? 0, packagings: packagingsByProduct.get(product.id) ?? [] })),
+      products: productsResult.data.map((product) => ({ ...product, unit_precision: quantityPrecision(product.unit), quantity: product.track_lots ? sellableLotQuantity.get(product.id) ?? 0 : balances.get(product.id) ?? 0, packagings: packagingsByProduct.get(product.id) ?? [] })),
       services: servicesResult.data,
       categories: categoriesResult.data,
       customers: customersResult.data,

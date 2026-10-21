@@ -6,9 +6,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { MotionConfig } from "motion/react";
 import {
   LuBell,
+  LuBuilding2,
   LuCalendarDays,
   LuChevronDown,
-  LuChevronLeft,
   LuChevronRight,
   LuCircleUserRound,
   LuCreditCard,
@@ -17,6 +17,7 @@ import {
   LuPackage,
   LuPawPrint,
   LuSettings2,
+  LuScissors,
   LuShoppingBag,
   LuTruck,
   LuUsersRound,
@@ -39,6 +40,7 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -56,14 +58,20 @@ import { saveSidebarPreference, saveThemePreference } from "@/features/settings/
 type StoreInfo = { id: string; name: string; logo_url: string | null };
 type Theme = "system" | "light" | "dark";
 
-const navigation = [
-  { href: "/dashboard", label: "Visão geral", icon: LuHouse },
-  { href: "/vendas", label: "Vendas", icon: LuShoppingBag },
-  { href: "/estoque", label: "Estoque", icon: LuPackage },
-  { href: "/agenda", label: "Agenda", icon: LuCalendarDays },
-  { href: "/entregas", label: "Entregas", icon: LuTruck },
-  { href: "/clientes", label: "Clientes", icon: LuUsersRound },
-  { href: "/financeiro", label: "Financeiro", icon: LuCreditCard },
+const navigationGroups = [
+  { label: "Principal", items: [{ href: "/dashboard", label: "Visão geral", icon: LuHouse }] },
+  { label: "Atendimento", items: [
+    { href: "/agenda", label: "Agenda", icon: LuCalendarDays },
+    { href: "/clientes", label: "Clientes", icon: LuUsersRound },
+    { href: "/vendas", label: "Vendas", icon: LuShoppingBag },
+    { href: "/entregas", label: "Entregas", icon: LuTruck },
+  ] },
+  { label: "Gestão", items: [
+    { href: "/estoque", label: "Estoque", icon: LuPackage },
+    { href: "/servicos", label: "Serviços", icon: LuScissors },
+    { href: "/fornecedores", label: "Fornecedores", icon: LuBuilding2 },
+  ] },
+  { label: "Financeiro", items: [{ href: "/financeiro", label: "Financeiro", icon: LuCreditCard }] },
 ];
 
 const pageTitles: Record<string, string> = {
@@ -74,6 +82,8 @@ const pageTitles: Record<string, string> = {
   entregas: "Entregas",
   clientes: "Clientes",
   financeiro: "Financeiro",
+  servicos: "Serviços",
+  fornecedores: "Fornecedores",
   configuracoes: "Configurações",
 };
 
@@ -86,44 +96,47 @@ function AppSidebar({ store, pathname }: { store: StoreInfo; pathname: string })
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
-      <SidebarHeader className="relative h-[72px] justify-center border-b border-sidebar-border px-4 py-0">
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar className="size-8 shrink-0 rounded-lg after:rounded-lg">
+      <SidebarHeader className="h-[72px] justify-center border-b border-sidebar-border px-3 py-0">
+        <div className="flex min-w-0 items-center gap-3 group-data-[collapsible=icon]:justify-center">
+          <Avatar className="size-8 shrink-0 rounded-lg after:rounded-lg group-data-[collapsible=icon]:hidden">
             {store.logo_url ? <AvatarImage src={store.logo_url} alt={`Logo de ${store.name}`} className="rounded-md object-contain" /> : null}
             <AvatarFallback className="rounded-md bg-foreground text-background"><LuPawPrint className="size-4" aria-hidden="true" /></AvatarFallback>
           </Avatar>
-          <span className="truncate text-[13px] font-semibold tracking-[-0.02em] group-data-[collapsible=icon]:hidden">{store.name}</span>
+          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-[-0.02em] group-data-[collapsible=icon]:hidden">{store.name}</span>
+          <SidebarTrigger
+            className="ml-auto size-8 shrink-0 rounded-md border border-border bg-background shadow-xs transition-colors hover:bg-muted group-data-[collapsible=icon]:ml-0"
+            aria-label={state === "expanded" ? "Recolher menu" : "Expandir menu"}
+          >
+            <LuChevronRight className={`size-4 transition-transform duration-200 ${state === "expanded" ? "rotate-180" : ""}`} aria-hidden="true" />
+          </SidebarTrigger>
         </div>
-        <SidebarTrigger
-          className="absolute top-1/2 -right-[15px] z-30 size-7 -translate-y-1/2 rounded-full border border-border bg-background shadow-sm hover:bg-muted"
-          aria-label={state === "expanded" ? "Recolher menu" : "Expandir menu"}
-        >
-          {state === "expanded" ? <LuChevronLeft className="size-3.5" /> : <LuChevronRight className="size-3.5" />}
-        </SidebarTrigger>
       </SidebarHeader>
       <SidebarContent className="px-2 pt-5">
-        <SidebarGroup className="p-0">
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-1">
-              {navigation.map(({ href, label, icon: Icon }) => {
-                const active = isActivePath(pathname, href);
-                return (
-                  <SidebarMenuItem key={href}>
-                    <SidebarMenuButton
-                      render={<Link href={href} aria-current={active ? "page" : undefined} />}
-                      isActive={active}
-                      tooltip={label}
-                      className="h-10 rounded-md px-3 text-[12px] font-medium [&>svg]:size-[17px]"
-                    >
-                      <Icon aria-hidden="true" />
-                      <span>{label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {navigationGroups.map((group) => (
+          <SidebarGroup key={group.label} className="p-0 pb-3">
+            <SidebarGroupLabel className="px-3 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground group-data-[collapsible=icon]:sr-only">{group.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1">
+                {group.items.map(({ href, label, icon: Icon }) => {
+                  const active = isActivePath(pathname, href);
+                  return (
+                    <SidebarMenuItem key={href}>
+                      <SidebarMenuButton
+                        render={<Link href={href} aria-current={active ? "page" : undefined} />}
+                        isActive={active}
+                        tooltip={label}
+                        className="h-10 rounded-md px-3 text-[12px] font-medium [&>svg]:size-[17px]"
+                      >
+                        <Icon aria-hidden="true" />
+                        <span>{label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
     </Sidebar>
   );

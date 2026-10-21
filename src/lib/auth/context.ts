@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { io } from "next/cache";
 import { redirect } from "next/navigation";
+import { BUSINESS_TIME_ZONE } from "@/lib/business-rules";
 import { createClient } from "@/lib/supabase/server";
 
 export const getUserContext = cache(async () => {
@@ -40,7 +41,7 @@ export const getUserContext = cache(async () => {
 
   return {
     user: authData.user,
-    store: storeResult.data,
+    store: { ...storeResult.data, timezone: BUSINESS_TIME_ZONE },
     preferences: preferencesResult.data ?? { theme: "system" as const, sidebar_collapsed: false },
   };
 });

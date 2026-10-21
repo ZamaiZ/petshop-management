@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getUserContext } from "@/lib/auth/context";
+import { hasValidQuantityPrecision } from "@/lib/business-rules";
 import { parseMoneyToCents } from "@/lib/inputs";
 import { createClient } from "@/lib/supabase/server";
 
@@ -66,6 +67,7 @@ export async function completeSale(input: unknown) {
   if (discountCents === null || discountCents < 0 || deliveryFeeCents === null || deliveryFeeCents < 0) {
     return { ok: false, message: "Informe valores válidos para desconto e entrega." };
   }
+  if (deliveryFeeCents > 0 && !parsed.data.deliveryAddress) return { ok: false, message: "A taxa só pode ser informada quando a venda inclui entrega." };
   const payments = parsed.data.payments.map((payment) => ({
     method: payment.method,
     amount_cents: parseMoneyToCents(payment.amount),
@@ -79,6 +81,28 @@ export async function completeSale(input: unknown) {
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
   const supabase = await createClient();
+  const productIds = [...new Set(parsed.data.items.flatMap((item) => item.productId ? [item.productId] : []))];
+  const packagingIds = [...new Set(parsed.data.items.flatMap((item) => item.packagingId ? [item.packagingId] : []))];
+  const [productsResult, packagingsResult] = await Promise.all([
+    productIds.length ? supabase.from("products").select("id, unit").eq("store_id", context.store.id).in("id", productIds).is("archived_at", null) : Promise.resolve({ data: [], error: null }),
+    packagingIds.length ? supabase.from("product_packagings").select("id, product_id, base_quantity").eq("store_id", context.store.id).in("id", packagingIds) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (productsResult.error || productsResult.data.length !== productIds.length || packagingsResult.error || packagingsResult.data.length !== packagingIds.length) {
+    return { ok: false, message: "Um produto ou embalagem não está mais disponível. Atualize a venda." };
+  }
+  const productById = new Map(productsResult.data.map((product) => [product.id, product]));
+  const packagingById = new Map(packagingsResult.data.map((packaging) => [packaging.id, packaging]));
+  const invalidQuantity = parsed.data.items.some((item) => {
+    if (!item.productId) return !hasValidQuantityPrecision(item.quantity, "un");
+    const product = productById.get(item.productId);
+    if (!product) return true;
+    if (!item.packagingId) return !hasValidQuantityPrecision(item.quantity, product.unit);
+    const packaging = packagingById.get(item.packagingId);
+    return !packaging || packaging.product_id !== product.id
+      || !hasValidQuantityPrecision(item.quantity, "un")
+      || !hasValidQuantityPrecision(item.quantity * packaging.base_quantity, product.unit);
+  });
+  if (invalidQuantity) return { ok: false, message: "Há uma quantidade que não respeita a unidade do item." };
   const hasCash = payments.some((payment) => payment.method === "cash");
   const { data: saleId, error } = await supabase.rpc("complete_sale", {
     p_store: context.store.id,
@@ -125,6 +149,14 @@ export async function returnSaleItems(input: { saleId: string; reason: string; m
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
   const supabase = await createClient();
+  const saleItemIds = parsed.data.lines.map((line) => line.saleItemId);
+  const { data: saleItems, error: saleItemsError } = await supabase.from("sale_items")
+    .select("id, unit").eq("store_id", context.store.id).eq("sale_id", parsed.data.saleId).in("id", saleItemIds);
+  if (saleItemsError || saleItems?.length !== saleItemIds.length) return { ok: false, message: "Um item da venda não está disponível para devolução." };
+  const unitByItem = new Map(saleItems.map((item) => [item.id, item.unit]));
+  if (parsed.data.lines.some((line) => !hasValidQuantityPrecision(line.quantity, unitByItem.get(line.saleItemId) ?? "un"))) {
+    return { ok: false, message: "A quantidade devolvida não respeita a unidade do item." };
+  }
   const { error } = await supabase.rpc("return_sale_items", { p_store: context.store.id, p_sale: parsed.data.saleId, p_lines: parsed.data.lines.map((line) => ({ sale_item_id: line.saleItemId, quantity: line.quantity, restock: line.restock })), p_reason: parsed.data.reason, p_method: parsed.data.method, p_session: parsed.data.method === "cash" ? parsed.data.cashSessionId : null, p_key: parsed.data.key });
   if (error) return { ok: false, message: saleError(error.message) };
   for (const path of ["/vendas", "/dashboard", "/estoque", "/financeiro", "/entregas"]) revalidatePath(path);

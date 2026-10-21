@@ -191,7 +191,7 @@ export async function createCustomerAddress(input: unknown) {
   });
   if (error) return { ok: false, message: "Não foi possível salvar o endereço." };
   revalidatePath("/clientes");
-  revalidatePath("/vendas/nova");
+  revalidatePath("/vendas");
   return { ok: true };
 }
 
@@ -204,7 +204,7 @@ export async function archiveCustomerAddress(customerId: string, addressId: stri
   const { error } = await supabase.from("customer_addresses").update({ archived_at: new Date().toISOString() }).eq("store_id", context.store.id).eq("customer_id", parsed.data.customerId).eq("id", parsed.data.addressId).is("archived_at", null);
   if (error) return { ok: false, message: "Não foi possível arquivar o endereço." };
   revalidatePath("/clientes");
-  revalidatePath("/vendas/nova");
+  revalidatePath("/vendas");
   return { ok: true };
 }
 

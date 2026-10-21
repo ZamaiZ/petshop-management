@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatMoney, formatTime } from "@/lib/format";
+import { OpenCashDialog } from "@/features/finance/components/open-cash-dialog";
 import type { DashboardOverview } from "../schema";
 import { SalesChart } from "./sales-chart";
 
@@ -102,7 +103,8 @@ export function DashboardView({ data, timezone }: { data: DashboardOverview; tim
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <ButtonLink href="/vendas/nova" className="h-9 rounded-md px-3 text-[11px]"><LuPlus className="size-3.5" />Nova venda</ButtonLink>
+          {!data.cash_open ? <OpenCashDialog /> : null}
+          <ButtonLink href="/vendas?nova=1" className="h-9 rounded-md px-3 text-[11px]"><LuPlus className="size-3.5" />Nova venda</ButtonLink>
           <ButtonLink href="/estoque?acao=receber" variant="outline" className="h-9 rounded-md px-3 text-[11px]"><LuPackage className="size-3.5" />Receber mercadoria</ButtonLink>
           <ButtonLink href="/agenda?acao=agendar" variant="outline" className="h-9 rounded-md px-3 text-[11px]"><LuCalendarDays className="size-3.5" />Agendar serviço</ButtonLink>
         </div>

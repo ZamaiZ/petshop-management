@@ -1,5 +1,6 @@
 import "server-only";
 
+import { quantityPrecision } from "@/lib/business-rules";
 import { createClient } from "@/lib/supabase/server";
 
 export type InventoryProduct = {
@@ -47,7 +48,7 @@ export async function getInventoryOverview(storeId: string) {
   const [productsResult, categoriesResult, suppliersResult, cashResult] = await Promise.all([
     supabase
       .from("products")
-      .select("id, name, description, brand, sku, barcode, category_id, unit, unit_precision, sale_price_cents, average_cost_cents, minimum_stock, track_lots")
+      .select("id, name, description, brand, sku, barcode, category_id, unit, sale_price_cents, average_cost_cents, minimum_stock, track_lots")
       .eq("store_id", storeId)
       .is("archived_at", null)
       .order("name", { ascending: true })
@@ -100,6 +101,7 @@ export async function getInventoryOverview(storeId: string) {
     data: {
       products: productsResult.data.map((product) => ({
         ...product,
+        unit_precision: quantityPrecision(product.unit),
         category: product.category_id ? (() => {
           const category = categoriesById.get(product.category_id);
           return category ? `${category.name}${category.archived_at ? " (arquivada)" : ""}` : null;

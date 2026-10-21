@@ -1,24 +1,28 @@
 "use client";
 
-import { useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { LuArrowRight, LuBanknote, LuChartNoAxesCombined, LuCircleCheck, LuCreditCard, LuDownload, LuPlus } from "react-icons/lu";
+import { LuArrowRight, LuBanknote, LuCalendarDays, LuChartNoAxesCombined, LuCircleCheck, LuCreditCard, LuDownload, LuPlus, LuSearch } from "react-icons/lu";
 import { DataTable, type DataTableColumn } from "@/components/data-table/data-table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { ButtonLink } from "@/components/ui/button-link";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ComboboxField } from "@/components/ui/combobox-field";
-import { formatMoney, formatQuantity, formatShortDate, formatTime } from "@/lib/format";
+import { DatePickerField } from "@/components/ui/date-picker-field";
+import { SaleComposer, type ComposerData } from "./sale-composer";
+import { addCivilDays, dateKeyAtTimeZone } from "@/lib/date";
+import { quantityPrecision } from "@/lib/business-rules";
+import { formatMoney, formatQuantity, formatShortDate, formatTime, localDateKey } from "@/lib/format";
 import { cancelSale, returnSaleItems } from "../actions";
 import type { SaleRecord, SalesOverview } from "../queries";
 
 const paymentLabels: Record<string, string> = { cash: "Dinheiro", pix: "Pix", debit_card: "Cartão de débito", credit_card: "Cartão de crédito", credit: "A receber", transfer: "Transferência" };
+const deliveryLabels: Record<string, string> = { preparing: "Preparando", ready: "Pronta", out_for_delivery: "Em rota", delivered: "Entregue", cancelled: "Cancelada" };
 
 function stateOf(sale: SaleRecord) {
   if (sale.status === "cancelled") return "cancelled";
@@ -93,7 +97,7 @@ function SaleActionDialog({ sale, cashSessionId }: { sale: SaleRecord; cashSessi
         </div> : <form onSubmit={submit} className="space-y-4">
           {mode === "return" ? <div className="divide-y rounded-md border">{returnLines.map((line) => {
             const item = sale.items.find((entry) => entry.id === line.saleItemId)!;
-            return <div key={item.id} className="grid gap-2 px-3 py-3 sm:grid-cols-[1fr_115px_auto] sm:items-center"><div><p className="text-[11px] font-medium">{item.description}</p><p className="text-[10px] text-muted-foreground">Até {formatQuantity(item.returnable_quantity, item.unit)} podem ser devolvidos</p></div><Input aria-label={`Quantidade devolvida de ${item.description}`} type="number" min="0" max={item.returnable_quantity} step={item.product_id ? 0.001 : 1} value={line.quantity} onChange={(event) => setReturnLines((current) => current.map((entry) => entry.saleItemId === item.id ? { ...entry, quantity: event.target.value } : entry))} className="h-8 text-[11px]" />{item.product_id ? <div className="flex items-center gap-2 text-[10px]"><Checkbox id={`restock-${item.id}`} checked={line.restock} onCheckedChange={(checked) => setReturnLines((current) => current.map((entry) => entry.saleItemId === item.id ? { ...entry, restock: checked === true } : entry))} /><Label htmlFor={`restock-${item.id}`} className="cursor-pointer">Repor estoque</Label></div> : null}</div>;
+            return <div key={item.id} className="grid gap-2 px-3 py-3 sm:grid-cols-[1fr_115px_auto] sm:items-center"><div><p className="text-[11px] font-medium">{item.description}</p><p className="text-[10px] text-muted-foreground">Até {formatQuantity(item.returnable_quantity, item.unit)} podem ser devolvidos</p></div><Input aria-label={`Quantidade devolvida de ${item.description}`} type="number" min="0" max={item.returnable_quantity} step={item.product_id ? 1 / 10 ** quantityPrecision(item.unit) : 1} value={line.quantity} onChange={(event) => setReturnLines((current) => current.map((entry) => entry.saleItemId === item.id ? { ...entry, quantity: event.target.value } : entry))} className="h-8 text-[11px]" />{item.product_id ? <div className="flex items-center gap-2 text-[10px]"><Checkbox id={`restock-${item.id}`} checked={line.restock} onCheckedChange={(checked) => setReturnLines((current) => current.map((entry) => entry.saleItemId === item.id ? { ...entry, restock: checked === true } : entry))} /><Label htmlFor={`restock-${item.id}`} className="cursor-pointer">Repor estoque</Label></div> : null}</div>;
           })}</div> : <div className="rounded-md bg-muted/40 p-3 text-[11px] text-muted-foreground">Os itens ainda não devolvidos serão registrados como retorno. Produtos retornam ao estoque.</div>}
           <div className="space-y-1.5"><Label htmlFor={`sale-reason-${sale.id}`}>Motivo</Label><Input id={`sale-reason-${sale.id}`} value={reason} onChange={(event) => setReason(event.target.value)} required minLength={3} maxLength={500} /></div>
           <div className="space-y-1.5"><Label>Forma de devolução</Label><ComboboxField value={method} onValueChange={(value) => setMethod(value as typeof method)} options={[{ value: "pix", label: "Pix" }, { value: "debit_card", label: "Cartão de débito" }, { value: "credit_card", label: "Cartão de crédito" }, { value: "cash", label: "Dinheiro" }]} />{method === "cash" && !cashSessionId ? <p className="text-[10px] text-destructive">Abra o caixa para devolver dinheiro.</p> : null}</div>
@@ -105,12 +109,78 @@ function SaleActionDialog({ sale, cashSessionId }: { sale: SaleRecord; cashSessi
   </>;
 }
 
-export function SalesView({ overview, timezone }: { overview: SalesOverview; timezone: string }) {
+type SalesRange = "today" | "7" | "30" | "90" | "custom";
+
+export function SalesView({ overview, timezone, composerData, composerError, newSaleOpen, initialDelivery = false }: {
+  overview: SalesOverview;
+  timezone: string;
+  composerData: ComposerData | null;
+  composerError: string | null;
+  newSaleOpen: boolean;
+  initialDelivery?: boolean;
+}) {
+  const router = useRouter();
+  const today = localDateKey(new Date(), timezone);
+  const [range, setRange] = useState<SalesRange>("30");
+  const [customFrom, setCustomFrom] = useState(addCivilDays(today, -29));
+  const [customTo, setCustomTo] = useState(today);
   const [status, setStatus] = useState("all");
-  const filteredSales = useMemo(() => status === "all" ? overview.sales : overview.sales.filter((sale) => stateOf(sale) === status), [overview.sales, status]);
+  const [search, setSearch] = useState("");
+  const [mobilePage, setMobilePage] = useState(0);
+  const [completedSale, setCompletedSale] = useState("");
+  const openedFromList = useRef(false);
+  useEffect(() => { if (!newSaleOpen) openedFromList.current = false; }, [newSaleOpen]);
+
+  const from = range === "today" ? today : range === "7" ? addCivilDays(today, -6) : range === "30" ? addCivilDays(today, -29) : range === "90" ? addCivilDays(today, -89) : customFrom;
+  const to = range === "custom" ? customTo : today;
+  const periodSales = useMemo(() => overview.sales.filter((sale) => {
+    const timestamp = sale.completed_at ?? sale.created_at;
+    const day = dateKeyAtTimeZone(new Date(timestamp), timezone);
+    return day >= from && day <= to;
+  }), [from, overview.sales, timezone, to]);
+  const filteredSales = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase("pt-BR");
+    return periodSales.filter((sale) => {
+      const matchesStatus = status === "all" || stateOf(sale) === status;
+      const matchesSearch = !query || [String(sale.number), sale.customer, ...sale.items.map((item) => item.description)].some((value) => value.toLocaleLowerCase("pt-BR").includes(query));
+      return matchesStatus && matchesSearch;
+    });
+  }, [periodSales, search, status]);
+  useEffect(() => { setMobilePage(0); }, [customFrom, customTo, filteredSales.length, range, search, status, today]);
+  const periodTotalCents = periodSales.filter((sale) => sale.status !== "cancelled").reduce((sum, sale) => sum + sale.total_cents, 0);
+  const periodCount = periodSales.filter((sale) => sale.completed_at !== null && sale.status !== "cancelled").length;
+  const periodReceivableCents = periodSales.reduce((sum, sale) => sum + sale.receivable_cents, 0);
+  const averageTicket = periodCount ? Math.round(periodTotalCents / periodCount) : 0;
+  const mobilePageCount = Math.max(1, Math.ceil(filteredSales.length / 10));
+  const currentMobilePage = Math.min(mobilePage, mobilePageCount - 1);
+  const mobileSales = filteredSales.slice(currentMobilePage * 10, currentMobilePage * 10 + 10);
+
+  function closeComposer() {
+    if (openedFromList.current) {
+      openedFromList.current = false;
+      router.back();
+    } else {
+      router.replace("/vendas", { scroll: false });
+    }
+  }
+
+  function openComposer() {
+    openedFromList.current = true;
+    setCompletedSale("");
+    router.push("/vendas?nova=1", { scroll: false });
+  }
+
+  function exportHref() {
+    const params = new URLSearchParams({ from, to });
+    if (status !== "all") params.set("status", status);
+    if (search.trim()) params.set("q", search.trim().slice(0, 120));
+    return `/api/exports/sales?${params.toString()}`;
+  }
+
   const columns = useMemo<DataTableColumn<SaleRecord>[]>(() => [
     { accessorKey: "number", header: "Venda / cliente", cell: ({ row }) => <div><p className="font-medium">#{row.original.number} <span className="mx-1 text-muted-foreground">/</span> {row.original.customer}</p><p className="mt-1.5 max-w-[330px] truncate text-[10px] text-muted-foreground">{row.original.items.slice(0, 2).map((item) => `${item.description} · ${formatQuantity(item.quantity, item.unit)}`).join(", ") || "Venda sem itens"}</p></div> },
-    { accessorKey: "completed_at", header: "Horário", cell: ({ row }) => row.original.completed_at ? `${formatShortDate(row.original.completed_at, timezone)} · ${formatTime(row.original.completed_at, timezone)}` : "—" },
+    { accessorKey: "completed_at", header: "Horário", cell: ({ row }) => { const date = row.original.completed_at ?? row.original.created_at; return `${formatShortDate(date, timezone)} · ${formatTime(date, timezone)}`; } },
+    { id: "delivery", header: "Entrega", cell: ({ row }) => row.original.has_delivery ? <Badge variant="outline">{deliveryLabels[row.original.delivery_status ?? ""] ?? "Entrega"}</Badge> : "—" },
     { id: "payment", header: "Pagamento", cell: ({ row }) => row.original.payment_methods.length ? [...new Set(row.original.payment_methods)].map((method) => paymentLabels[method] ?? method).join(" · ") : row.original.receivable_cents > 0 ? "A receber" : "—" },
     { id: "status", header: "Status", cell: ({ row }) => <Badge variant="outline" className={stateClass(row.original)}><span className={`mr-1.5 size-1.5 rounded-full ${stateOf(row.original) === "paid" ? "bg-emerald-500" : stateOf(row.original) === "receivable" ? "bg-amber-500" : "bg-muted-foreground"}`} />{stateLabel(row.original)}</Badge> },
     { accessorKey: "total_cents", header: "Total", cell: ({ row }) => <span className="font-medium tabular-nums">{formatMoney(row.original.total_cents)}</span> },
@@ -118,16 +188,42 @@ export function SalesView({ overview, timezone }: { overview: SalesOverview; tim
   ], [overview.cashSessionId, timezone]);
 
   return <div className="space-y-5">
-    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Vendas</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Histórico e pagamentos.</p></div><ButtonLink href="/vendas/nova" className="h-9 gap-2 rounded-md px-3 text-[11px]"><LuPlus className="size-3.5" /> Nova venda</ButtonLink></div>
+    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Vendas</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Histórico e pagamentos.</p></div><Button className="h-9 gap-2 rounded-md px-3 text-[11px]" onClick={openComposer}><LuPlus className="size-3.5" /> Nova venda</Button></div>
+    {completedSale ? <Alert><LuCircleCheck className="size-4" /><AlertDescription>Venda registrada com sucesso. Código {completedSale}.</AlertDescription></Alert> : null}
     <section className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-      <Metric label="Vendido hoje" value={formatMoney(overview.todaySalesCents)} detail="Produtos e serviços" icon={<LuBanknote className="size-4" />} />
-      <Metric label="Vendas realizadas" value={String(overview.todayCount)} detail="Atendimentos concluídos" icon={<LuCircleCheck className="size-4" />} />
-      <Metric label="Ticket médio" value={formatMoney(overview.averageTicketCents)} detail="Valor médio por venda" icon={<LuChartNoAxesCombined className="size-4" />} />
-      <Metric label="Vendas a receber" value={String(overview.openReceivablesCount)} detail="Acompanhe os pagamentos" icon={<LuCreditCard className="size-4" />} />
+      <Metric label="Vendido no período" value={formatMoney(periodTotalCents)} detail="Total bruto, antes de devoluções" icon={<LuBanknote className="size-4" />} />
+      <Metric label="Vendas realizadas" value={String(periodCount)} detail="Dentro do período selecionado" icon={<LuCircleCheck className="size-4" />} />
+      <Metric label="Ticket médio" value={formatMoney(averageTicket)} detail="Valor médio por venda concluída" icon={<LuChartNoAxesCombined className="size-4" />} />
+      <Metric label="A receber" value={formatMoney(periodReceivableCents)} detail="Saldo pendente no período" icon={<LuCreditCard className="size-4" />} />
     </section>
     <Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]">
-      <DataTable columns={columns} data={filteredSales} searchPlaceholder="Buscar por cliente ou número da venda..." emptyMessage="Nenhuma venda encontrada." toolbarActions={<><ComboboxField value={status} onValueChange={setStatus} options={[{ value: "all", label: "Todos os status" }, { value: "paid", label: "Pagas" }, { value: "receivable", label: "A receber" }, { value: "cancelled", label: "Canceladas" }, { value: "refunded", label: "Devolvidas" }]} className="h-9 w-[150px]" inputClassName="text-[11px]" /><a href="/api/exports/sales" className={buttonVariants({ variant: "outline", className: "h-9 gap-2 px-3 text-[11px]" })}><LuDownload className="size-3.5" /> Exportar</a></>} />
+      <div className="flex flex-col gap-3 border-b border-border px-4 py-3.5 sm:px-5">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+          <div className="relative w-full max-w-[310px]"><LuSearch className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar cliente, venda ou item..." aria-label="Buscar por cliente, venda ou item" maxLength={120} className="h-9 rounded-md pl-9 text-[11px]" /></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <ComboboxField value={range} onValueChange={(value) => setRange(value as SalesRange)} options={[{ value: "today", label: "Hoje" }, { value: "7", label: "Últimos 7 dias" }, { value: "30", label: "Últimos 30 dias" }, { value: "90", label: "Últimos 90 dias" }, { value: "custom", label: "Personalizado" }]} className="h-9 w-[155px]" inputClassName="text-[11px]" />
+            <ComboboxField value={status} onValueChange={setStatus} options={[{ value: "all", label: "Todos os status" }, { value: "paid", label: "Pagas" }, { value: "receivable", label: "A receber" }, { value: "cancelled", label: "Canceladas" }, { value: "refunded", label: "Devolvidas" }, { value: "partially_refunded", label: "Devolução parcial" }]} className="h-9 w-[170px]" inputClassName="text-[11px]" />
+            <a href={exportHref()} className={buttonVariants({ variant: "outline", className: "h-9 gap-2 px-3 text-[11px]" })}><LuDownload className="size-3.5" /> Exportar XLSX</a>
+          </div>
+        </div>
+        {range === "custom" ? <div className="flex flex-col gap-2 sm:flex-row sm:items-center"><span className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground"><LuCalendarDays className="size-3.5" /> Período</span><DatePickerField ariaLabel="Data inicial" value={customFrom} min={addCivilDays(today, -365)} max={customTo || today} onValueChange={setCustomFrom} className="h-8 text-[10px]" /><span className="text-center text-[10px] text-muted-foreground">até</span><DatePickerField ariaLabel="Data final" value={customTo} max={today} min={customFrom || undefined} onValueChange={setCustomTo} className="h-8 text-[10px]" /></div> : null}
+      </div>
+      <div className="divide-y md:hidden">
+        {filteredSales.length ? mobileSales.map((sale) => <article key={sale.id} className="space-y-2.5 px-4 py-3.5">
+          <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-[11px] font-semibold">Venda #{sale.number} · {sale.customer}</p><p className="mt-1 text-[10px] text-muted-foreground">{formatShortDate(sale.completed_at ?? sale.created_at, timezone)} · {formatTime(sale.completed_at ?? sale.created_at, timezone)}</p></div><SaleActionDialog sale={sale} cashSessionId={overview.cashSessionId} /></div>
+          <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap items-center gap-1.5"><Badge variant="outline" className={stateClass(sale)}>{stateLabel(sale)}</Badge>{sale.has_delivery ? <Badge variant="outline">Entrega · {deliveryLabels[sale.delivery_status ?? ""] ?? "ativa"}</Badge> : null}</div><span className="text-[11px] font-semibold tabular-nums">{formatMoney(sale.total_cents)}</span></div>
+          <p className="line-clamp-2 text-[10px] text-muted-foreground">{sale.items.slice(0, 3).map((item) => `${item.description} · ${formatQuantity(item.quantity, item.unit)}`).join(", ") || "Venda sem itens"}</p>
+        </article>) : <p className="px-4 py-12 text-center text-xs text-muted-foreground">Nenhuma venda encontrada.</p>}
+        {filteredSales.length > 10 ? <div className="flex items-center justify-between px-4 py-3"><p className="text-[10px] text-muted-foreground">{currentMobilePage * 10 + 1}–{Math.min((currentMobilePage + 1) * 10, filteredSales.length)} de {filteredSales.length}</p><div className="flex gap-1.5"><Button type="button" variant="outline" size="sm" className="h-7 px-2.5 text-[10px]" onClick={() => setMobilePage((page) => Math.max(0, page - 1))} disabled={currentMobilePage === 0}>Anterior</Button><Button type="button" variant="outline" size="sm" className="h-7 px-2.5 text-[10px]" onClick={() => setMobilePage((page) => Math.min(mobilePageCount - 1, page + 1))} disabled={currentMobilePage >= mobilePageCount - 1}>Próxima</Button></div></div> : null}
+      </div>
+      <div className="hidden md:block"><DataTable columns={columns} data={filteredSales} emptyMessage="Nenhuma venda encontrada." hideSearch /></div>
     </Card>
+    <Dialog open={newSaleOpen} onOpenChange={(open) => { if (!open && newSaleOpen) closeComposer(); }}>
+      <DialogContent className="flex h-[96dvh] max-h-[96dvh] w-[98vw] max-w-[1440px] flex-col overflow-hidden p-0 sm:max-w-[1440px]">
+        <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-12 sm:px-6"><DialogTitle className="text-[17px]">Nova venda</DialogTitle><DialogDescription className="text-[11px]">Selecione os produtos ou serviços, revise o carrinho e conclua o pagamento.</DialogDescription></DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 xl:px-7">{composerData ? <SaleComposer data={composerData} timezone={timezone} initialDelivery={initialDelivery} onCompleted={(saleId) => { setCompletedSale(saleId.slice(0, 8)); openedFromList.current = false; router.replace("/vendas", { scroll: false }); router.refresh(); }} /> : <Alert variant="destructive"><AlertTitle>Falha ao carregar o catálogo</AlertTitle><AlertDescription className="flex flex-wrap items-center justify-between gap-3">{composerError ?? "Tente novamente."}<Button type="button" variant="outline" size="sm" onClick={() => router.refresh()}>Tentar novamente</Button></AlertDescription></Alert>}</div>
+      </DialogContent>
+    </Dialog>
   </div>;
 }
 
@@ -136,5 +232,6 @@ function Metric({ label, value, detail, icon }: { label: string; value: string; 
 }
 
 export function SalesLoadError({ message }: { message: string }) {
-  return <Alert variant="destructive"><AlertTitle>Falha ao carregar vendas</AlertTitle><AlertDescription>{message}</AlertDescription></Alert>;
+  const router = useRouter();
+  return <Alert variant="destructive"><AlertTitle>Falha ao carregar vendas</AlertTitle><AlertDescription className="flex flex-wrap items-center justify-between gap-3">{message}<Button type="button" variant="outline" size="sm" onClick={() => router.refresh()}>Tentar novamente</Button></AlertDescription></Alert>;
 }
