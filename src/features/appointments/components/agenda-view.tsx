@@ -11,6 +11,7 @@ import {
   LuScissors,
 } from "react-icons/lu";
 import { Calendar } from "@/components/ui/calendar";
+import { DatePickerField } from "@/components/ui/date-picker-field";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ComboboxField } from "@/components/ui/combobox-field";
 import { Textarea } from "@/components/ui/textarea";
 import { formatMoney, formatTime } from "@/lib/format";
 import { dateTimeInTimeZone } from "@/lib/date";
@@ -79,6 +80,7 @@ function AppointmentForm({ date, data, onClose }: { date: string; data: AgendaDa
   const [customerId, setCustomerId] = useState("");
   const [petId, setPetId] = useState("");
   const [serviceId, setServiceId] = useState("");
+  const [appointmentDate, setAppointmentDate] = useState(date);
   const pets = useMemo(() => data.pets.filter((pet) => pet.customer_id === customerId), [data.pets, customerId]);
   const service = data.services.find((item) => item.id === serviceId);
 
@@ -103,10 +105,10 @@ function AppointmentForm({ date, data, onClose }: { date: string; data: AgendaDa
 
   return <form onSubmit={submit} className="space-y-4">
     <div className="grid gap-3 sm:grid-cols-2">
-      <div className="space-y-1.5 sm:col-span-2"><Label>Tutor</Label><Select value={customerId || undefined} onValueChange={(value) => { setCustomerId(value ?? ""); setPetId(""); }}><SelectTrigger className="w-full"><SelectValue placeholder="Selecione o cliente" /></SelectTrigger><SelectContent>{data.customers.map((customer) => <SelectItem key={customer.id} value={customer.id}>{customer.name}</SelectItem>)}</SelectContent></Select></div>
-      <div className="space-y-1.5"><Label>Pet</Label><Select value={petId || undefined} onValueChange={(value) => setPetId(value ?? "")} disabled={!customerId}><SelectTrigger className="w-full"><SelectValue placeholder={customerId ? "Selecione o pet" : "Escolha o tutor"} /></SelectTrigger><SelectContent>{pets.map((pet) => <SelectItem key={pet.id} value={pet.id}>{pet.name} · {pet.species}</SelectItem>)}</SelectContent></Select></div>
-      <div className="space-y-1.5"><Label>Serviço</Label><Select value={serviceId || undefined} onValueChange={(value) => setServiceId(value ?? "")}><SelectTrigger className="w-full"><SelectValue placeholder="Selecione o serviço" /></SelectTrigger><SelectContent>{data.services.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select></div>
-      <div className="space-y-1.5"><Label htmlFor="appointment-date">Data</Label><Input id="appointment-date" name="date" type="date" defaultValue={date} required /></div>
+      <div className="space-y-1.5 sm:col-span-2"><Label>Tutor</Label><ComboboxField value={customerId} onValueChange={(value) => { setCustomerId(value); setPetId(""); }} options={data.customers.map((customer) => ({ value: customer.id, label: customer.name }))} placeholder="Selecione o cliente" /></div>
+      <div className="space-y-1.5"><Label>Pet</Label><ComboboxField value={petId} onValueChange={setPetId} options={pets.map((pet) => ({ value: pet.id, label: `${pet.name} · ${pet.species}` }))} placeholder={customerId ? "Selecione o pet" : "Escolha o tutor"} disabled={!customerId} /></div>
+      <div className="space-y-1.5"><Label>Serviço</Label><ComboboxField value={serviceId} onValueChange={setServiceId} options={data.services.map((item) => ({ value: item.id, label: item.name }))} placeholder="Selecione o serviço" /></div>
+      <div className="space-y-1.5"><Label htmlFor="appointment-date">Data</Label><DatePickerField id="appointment-date" name="date" value={appointmentDate} onValueChange={setAppointmentDate} required /></div>
       <div className="space-y-1.5"><Label htmlFor="appointment-time">Horário</Label><Input id="appointment-time" name="time" type="time" step={1800} defaultValue="09:00" required /></div>
     </div>
     {service ? <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2.5 text-[11px]"><span className="text-muted-foreground">Duração: {service.duration_minutes} min</span><span className="font-medium tabular-nums">{formatMoney(service.price_cents)}</span></div> : null}
@@ -147,6 +149,7 @@ function RescheduleDialog({ appointment, services, timezone }: { appointment: Ag
   const current = dateTimeInTimeZone(appointment.starts_at, timezone);
   const [open, setOpen] = useState(false);
   const [serviceId, setServiceId] = useState(appointment.service_id);
+  const [rescheduleDate, setRescheduleDate] = useState(current.date);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
 
@@ -170,8 +173,8 @@ function RescheduleDialog({ appointment, services, timezone }: { appointment: Ag
   }
 
   return <>
-    <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-muted-foreground" onClick={() => setOpen(true)}>Reagendar</Button>
-    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="sm:max-w-[440px]"><DialogHeader><DialogTitle className="text-[17px]">Reagendar atendimento</DialogTitle><DialogDescription className="text-[11px]">A agenda verifica conflitos e grava a nova versão do atendimento.</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-3"><div className="space-y-1.5"><Label>Serviço</Label><Select value={serviceId} onValueChange={(value) => setServiceId(value ?? appointment.service_id)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{services.map((service) => <SelectItem key={service.id} value={service.id}>{service.name} · {service.duration_minutes} min</SelectItem>)}</SelectContent></Select></div><div className="grid grid-cols-2 gap-3"><div className="space-y-1.5"><Label htmlFor={`reschedule-date-${appointment.id}`}>Data</Label><Input id={`reschedule-date-${appointment.id}`} name="date" type="date" defaultValue={current.date} required /></div><div className="space-y-1.5"><Label htmlFor={`reschedule-time-${appointment.id}`}>Horário</Label><Input id={`reschedule-time-${appointment.id}`} name="time" type="time" step={1800} defaultValue={current.time} required /></div></div><div className="space-y-1.5"><Label htmlFor={`reschedule-reason-${appointment.id}`}>Motivo</Label><Textarea id={`reschedule-reason-${appointment.id}`} name="reason" rows={2} required minLength={3} maxLength={500} /></div>{message ? <p role="alert" className="text-[11px] text-destructive">{message}</p> : null}<DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit" disabled={pending}>{pending ? "Salvando…" : "Salvar novo horário"}</Button></DialogFooter></form></DialogContent></Dialog>
+    <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-muted-foreground" onClick={() => { setRescheduleDate(current.date); setOpen(true); }}>Reagendar</Button>
+    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="sm:max-w-[440px]"><DialogHeader><DialogTitle className="text-[17px]">Reagendar atendimento</DialogTitle><DialogDescription className="text-[11px]">A agenda verifica conflitos e grava a nova versão do atendimento.</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-3"><div className="space-y-1.5"><Label>Serviço</Label><ComboboxField value={serviceId} onValueChange={setServiceId} options={services.map((service) => ({ value: service.id, label: `${service.name} · ${service.duration_minutes} min` }))} /></div><div className="grid grid-cols-2 gap-3"><div className="space-y-1.5"><Label htmlFor={`reschedule-date-${appointment.id}`}>Data</Label><DatePickerField id={`reschedule-date-${appointment.id}`} name="date" value={rescheduleDate} onValueChange={setRescheduleDate} required /></div><div className="space-y-1.5"><Label htmlFor={`reschedule-time-${appointment.id}`}>Horário</Label><Input id={`reschedule-time-${appointment.id}`} name="time" type="time" step={1800} defaultValue={current.time} required /></div></div><div className="space-y-1.5"><Label htmlFor={`reschedule-reason-${appointment.id}`}>Motivo</Label><Textarea id={`reschedule-reason-${appointment.id}`} name="reason" rows={2} required minLength={3} maxLength={500} /></div>{message ? <p role="alert" className="text-[11px] text-destructive">{message}</p> : null}<DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit" disabled={pending}>{pending ? "Salvando…" : "Salvar novo horário"}</Button></DialogFooter></form></DialogContent></Dialog>
   </>;
 }
 

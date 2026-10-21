@@ -19,6 +19,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { DatePickerField } from "@/components/ui/date-picker-field";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ComboboxField } from "@/components/ui/combobox-field";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatMoney, formatQuantity, formatShortDate } from "@/lib/format";
 import { parseMoneyToCents } from "@/lib/inputs";
@@ -89,11 +90,11 @@ function ProductDialog({ categories }: { categories: InventoryOverview["categori
               <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="product-name">Nome</Label><Input id="product-name" name="name" required maxLength={160} /></div>
               <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="product-description">Descrição</Label><Input id="product-description" name="description" maxLength={500} /></div>
               <div className="space-y-1.5"><Label htmlFor="product-brand">Marca</Label><Input id="product-brand" name="brand" maxLength={100} /></div>
-              <div className="space-y-1.5"><Label htmlFor="product-category">Categoria</Label><Select value={categoryId || undefined} onValueChange={(value) => setCategoryId(value ?? "")}><SelectTrigger id="product-category" className="w-full"><SelectValue placeholder="Sem categoria" /></SelectTrigger><SelectContent>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-1.5"><Label htmlFor="product-category">Categoria</Label><ComboboxField id="product-category" value={categoryId} onValueChange={setCategoryId} options={categories.map((category) => ({ value: category.id, label: category.name }))} placeholder="Sem categoria" /></div>
               <div className="space-y-1.5"><Label htmlFor="product-sku">SKU</Label><Input id="product-sku" name="sku" maxLength={80} /></div>
               <div className="space-y-1.5"><Label htmlFor="product-barcode">Código de barras</Label><Input id="product-barcode" name="barcode" inputMode="numeric" maxLength={80} /></div>
-              <div className="space-y-1.5"><Label htmlFor="product-unit">Unidade base</Label><Select value={unit} onValueChange={(value) => { const nextUnit = value ?? "un"; setUnit(nextUnit); setPrecision(["kg", "g", "L", "ml"].includes(nextUnit) ? "3" : "0"); }}><SelectTrigger id="product-unit" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{[["un", "Unidade"], ["kg", "Quilograma"], ["g", "Grama"], ["L", "Litro"], ["ml", "Mililitro"], ["pacote", "Pacote"], ["caixa", "Caixa"]].map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-1.5"><Label htmlFor="product-precision">Casas decimais</Label><Select name="precision" value={precision} onValueChange={(value) => setPrecision(value ?? "0")}><SelectTrigger id="product-precision" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="0">0</SelectItem><SelectItem value="1">1</SelectItem><SelectItem value="2">2</SelectItem><SelectItem value="3">3</SelectItem></SelectContent></Select></div>
+              <div className="space-y-1.5"><Label htmlFor="product-unit">Unidade base</Label><ComboboxField id="product-unit" value={unit} onValueChange={(nextUnit) => { setUnit(nextUnit); setPrecision(["kg", "g", "L", "ml"].includes(nextUnit) ? "3" : "0"); }} options={[{ value: "un", label: "Unidade" }, { value: "kg", label: "Quilograma" }, { value: "g", label: "Grama" }, { value: "L", label: "Litro" }, { value: "ml", label: "Mililitro" }, { value: "pacote", label: "Pacote" }, { value: "caixa", label: "Caixa" }]} /></div>
+              <div className="space-y-1.5"><Label htmlFor="product-precision">Casas decimais</Label><ComboboxField id="product-precision" name="precision" value={precision} onValueChange={setPrecision} options={[{ value: "0", label: "0" }, { value: "1", label: "1" }, { value: "2", label: "2" }, { value: "3", label: "3" }]} /></div>
               <div className="space-y-1.5"><Label htmlFor="product-price">Preço de venda (R$)</Label><Input id="product-price" name="salePrice" inputMode="decimal" placeholder="0,00" required /></div>
               <div className="space-y-1.5"><Label htmlFor="product-cost">Custo médio (R$)</Label><Input id="product-cost" name="averageCost" inputMode="decimal" placeholder="0,00" defaultValue="0,00" required /></div>
               <div className="space-y-1.5"><Label htmlFor="product-minimum">Estoque mínimo</Label><Input id="product-minimum" name="minimumStock" type="number" min="0" step="0.001" defaultValue="0" /></div>
@@ -244,7 +245,7 @@ function EditProductDialog({ product, categories, onSaved }: { product: Inventor
             <div className="space-y-1.5 sm:col-span-2"><Label htmlFor={`edit-product-name-${product.id}`}>Nome</Label><Input id={`edit-product-name-${product.id}`} name="name" defaultValue={product.name} maxLength={160} required /></div>
             <div className="space-y-1.5 sm:col-span-2"><Label htmlFor={`edit-product-description-${product.id}`}>Descrição</Label><Input id={`edit-product-description-${product.id}`} name="description" defaultValue={product.description ?? ""} maxLength={500} /></div>
             <div className="space-y-1.5"><Label htmlFor={`edit-product-brand-${product.id}`}>Marca</Label><Input id={`edit-product-brand-${product.id}`} name="brand" defaultValue={product.brand ?? ""} maxLength={100} /></div>
-            <div className="space-y-1.5"><Label htmlFor={`edit-product-category-${product.id}`}>Categoria</Label><Select value={categoryId} onValueChange={(value) => setCategoryId(value ?? "__none")}><SelectTrigger id={`edit-product-category-${product.id}`} className="w-full"><SelectValue placeholder="Selecione uma categoria" /></SelectTrigger><SelectContent><SelectItem value="__none">Sem categoria</SelectItem>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-1.5"><Label htmlFor={`edit-product-category-${product.id}`}>Categoria</Label><ComboboxField id={`edit-product-category-${product.id}`} value={categoryId} onValueChange={setCategoryId} options={[{ value: "__none", label: "Sem categoria" }, ...categories.map((category) => ({ value: category.id, label: category.name }))]} placeholder="Selecione uma categoria" /></div>
             <div className="space-y-1.5"><Label htmlFor={`edit-product-sku-${product.id}`}>SKU</Label><Input id={`edit-product-sku-${product.id}`} name="sku" defaultValue={product.sku ?? ""} maxLength={80} /></div>
             <div className="space-y-1.5"><Label htmlFor={`edit-product-barcode-${product.id}`}>Código de barras</Label><Input id={`edit-product-barcode-${product.id}`} name="barcode" defaultValue={product.barcode ?? ""} maxLength={80} /></div>
             <div className="space-y-1.5"><Label htmlFor={`edit-product-price-${product.id}`}>Preço de venda (R$)</Label><Input id={`edit-product-price-${product.id}`} name="salePrice" inputMode="decimal" defaultValue={(product.sale_price_cents / 100).toFixed(2).replace(".", ",")} required /></div>
@@ -313,7 +314,7 @@ function AdjustmentDialog({ product, onSaved }: { product: InventoryProduct; onS
     <Button variant="outline" size="sm" className="h-7 px-2 text-[10px]" onClick={() => { setLotId(product.lots[0]?.id ?? ""); setOperationKey(crypto.randomUUID()); setOpen(true); }}>Ajustar</Button>
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="sm:max-w-[440px]"><DialogHeader><DialogTitle className="text-[17px]">Ajustar estoque</DialogTitle><DialogDescription className="text-[11px]">{product.name} · saldo atual {formatQuantity(product.quantity, product.unit)}.</DialogDescription></DialogHeader>
       {lotUnavailable ? <Alert><AlertTitle>Produto controlado por lote</AlertTitle><AlertDescription>Receba um lote antes de fazer o ajuste.</AlertDescription></Alert> : <form onSubmit={submit} className="space-y-4">
-        {product.track_lots ? <div className="space-y-1.5"><Label>Lote</Label><Select value={lotId || undefined} onValueChange={(value) => setLotId(value ?? "")}><SelectTrigger className="w-full"><SelectValue placeholder="Selecione um lote" /></SelectTrigger><SelectContent>{product.lots.map((lot) => <SelectItem key={lot.id} value={lot.id}>{lot.code} · {formatQuantity(lot.quantity, product.unit)}</SelectItem>)}</SelectContent></Select></div> : null}
+        {product.track_lots ? <div className="space-y-1.5"><Label>Lote</Label><ComboboxField value={lotId} onValueChange={setLotId} options={product.lots.map((lot) => ({ value: lot.id, label: `${lot.code} · ${formatQuantity(lot.quantity, product.unit)}` }))} placeholder="Selecione um lote" /></div> : null}
         <div className="space-y-1.5"><Label htmlFor={`adjust-count-${product.id}`}>Quantidade física</Label><Input id={`adjust-count-${product.id}`} name="counted" type="number" min="0" step={product.unit_precision ? (1 / 10 ** product.unit_precision).toString() : "1"} defaultValue={product.track_lots ? product.lots.find((lot) => lot.id === lotId)?.quantity ?? 0 : product.quantity} required /></div>
         <div className="space-y-1.5"><Label htmlFor={`adjust-reason-${product.id}`}>Motivo do ajuste</Label><Input id={`adjust-reason-${product.id}`} name="reason" required maxLength={500} placeholder="Contagem física, avaria…" /></div>
         {message ? <p role="alert" className="text-[11px] text-destructive">{message}</p> : null}
@@ -331,6 +332,7 @@ function ReceiptDialog({ overview, onSaved }: { overview: InventoryOverview; onS
   const [operationKey, setOperationKey] = useState("");
   const [method, setMethod] = useState("pix");
   const [payNow, setPayNow] = useState(false);
+  const [dueOn, setDueOn] = useState("");
   const [items, setItems] = useState<ReceiptLine[]>([{ productId: "", packages: "1", conversionFactor: "1", totalCost: "0,00", lotCode: "", expiresOn: "" }]);
 
   function updateItem(index: number, key: keyof ReceiptLine, value: string) {
@@ -339,8 +341,10 @@ function ReceiptDialog({ overview, onSaved }: { overview: InventoryOverview; onS
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const dueOn = String(form.get("dueOn") ?? "");
+    if (!dueOn) {
+      setMessage("Informe o vencimento da conta.");
+      return;
+    }
     const converted = items.map((item) => ({
       productId: item.productId,
       packages: Number(item.packages),
@@ -375,23 +379,23 @@ function ReceiptDialog({ overview, onSaved }: { overview: InventoryOverview; onS
   }
 
   return <>
-    <Button variant="outline" className="h-9 gap-2 rounded-md px-3 text-[11px]" onClick={() => { setOperationKey(crypto.randomUUID()); setOpen(true); }}><LuTruck className="size-3.5" /> Receber mercadoria</Button>
+    <Button variant="outline" className="h-9 gap-2 rounded-md px-3 text-[11px]" onClick={() => { setOperationKey(crypto.randomUUID()); setDueOn(""); setMessage(""); setOpen(true); }}><LuTruck className="size-3.5" /> Receber mercadoria</Button>
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[760px]"><DialogHeader><DialogTitle className="text-[18px]">Receber mercadoria</DialogTitle><DialogDescription className="text-[11px]">O custo, os lotes, o saldo e a conta a pagar serão registrados na mesma operação.</DialogDescription></DialogHeader>
       <form onSubmit={submit} className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5"><Label>Fornecedor</Label><Select value={supplierId || undefined} onValueChange={(value) => setSupplierId(value ?? "")}><SelectTrigger className="w-full"><SelectValue placeholder="Sem fornecedor" /></SelectTrigger><SelectContent>{overview.suppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-1.5"><Label htmlFor="receipt-due">Vencimento da conta</Label><Input id="receipt-due" name="dueOn" type="date" required /></div>
+          <div className="space-y-1.5"><Label>Fornecedor</Label><ComboboxField value={supplierId} onValueChange={setSupplierId} options={overview.suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))} placeholder="Sem fornecedor" /></div>
+          <div className="space-y-1.5"><Label htmlFor="receipt-due">Vencimento da conta</Label><DatePickerField id="receipt-due" name="dueOn" value={dueOn} onValueChange={setDueOn} required /></div>
         </div>
         <div className="space-y-3">
           {items.map((item, index) => {
             const product = overview.products.find((entry) => entry.id === item.productId);
             return <div key={index} className="rounded-lg border border-border p-3">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5 sm:col-span-2"><Label>Produto</Label><Select value={item.productId || undefined} onValueChange={(value) => updateItem(index, "productId", value ?? "")}><SelectTrigger className="w-full"><SelectValue placeholder="Selecione um produto" /></SelectTrigger><SelectContent>{overview.products.map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.name} · {entry.unit}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1.5 sm:col-span-2"><Label>Produto</Label><ComboboxField value={item.productId} onValueChange={(value) => updateItem(index, "productId", value)} options={overview.products.map((entry) => ({ value: entry.id, label: `${entry.name} · ${entry.unit}` }))} placeholder="Selecione um produto" /></div>
                 <div className="space-y-1.5"><Label>Embalagens recebidas</Label><Input type="number" min="0.001" step="0.001" value={item.packages} onChange={(event) => updateItem(index, "packages", event.target.value)} required /></div>
                 <div className="space-y-1.5"><Label>Unidades base por embalagem</Label><Input type="number" min="0.001" step="0.001" value={item.conversionFactor} onChange={(event) => updateItem(index, "conversionFactor", event.target.value)} required /></div>
                 <div className="space-y-1.5"><Label>Custo total do item (R$)</Label><Input inputMode="decimal" value={item.totalCost} onChange={(event) => updateItem(index, "totalCost", event.target.value)} required /></div>
-                {product?.track_lots ? <><div className="space-y-1.5"><Label>Código do lote</Label><Input value={item.lotCode} onChange={(event) => updateItem(index, "lotCode", event.target.value)} required maxLength={120} /></div><div className="space-y-1.5"><Label>Validade</Label><Input type="date" value={item.expiresOn} onChange={(event) => updateItem(index, "expiresOn", event.target.value)} /></div></> : null}
+                {product?.track_lots ? <><div className="space-y-1.5"><Label>Código do lote</Label><Input value={item.lotCode} onChange={(event) => updateItem(index, "lotCode", event.target.value)} required maxLength={120} /></div><div className="space-y-1.5"><Label htmlFor={`receipt-expires-${index}`}>Validade</Label><DatePickerField id={`receipt-expires-${index}`} value={item.expiresOn} onValueChange={(value) => updateItem(index, "expiresOn", value)} /></div></> : null}
               </div>
               {items.length > 1 ? <div className="mt-2 flex justify-end"><Button type="button" variant="ghost" size="sm" className="h-7 text-[10px] text-muted-foreground" onClick={() => setItems((previous) => previous.filter((_, i) => i !== index))}>Remover item</Button></div> : null}
             </div>;
@@ -400,7 +404,7 @@ function ReceiptDialog({ overview, onSaved }: { overview: InventoryOverview; onS
         </div>
         <div className="flex flex-wrap items-center gap-3 rounded-md bg-muted/50 p-3">
           <label className="flex items-center gap-2 text-[11px]"><Checkbox checked={payNow} onCheckedChange={(value) => setPayNow(value === true)} /> Pagar agora</label>
-          {payNow ? <><Select value={method} onValueChange={(value) => setMethod(value ?? "pix")}><SelectTrigger className="h-8 w-40 text-[11px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pix">Pix</SelectItem><SelectItem value="debit_card">Cartão de débito</SelectItem><SelectItem value="credit_card">Cartão de crédito</SelectItem><SelectItem value="transfer">Transferência</SelectItem><SelectItem value="cash">Dinheiro</SelectItem></SelectContent></Select>{method === "cash" && !overview.openCashSession ? <span className="text-[10px] text-destructive">Abra o caixa para pagar em dinheiro.</span> : null}</> : null}
+          {payNow ? <><ComboboxField value={method} onValueChange={setMethod} options={[{ value: "pix", label: "Pix" }, { value: "debit_card", label: "Cartão de débito" }, { value: "credit_card", label: "Cartão de crédito" }, { value: "transfer", label: "Transferência" }, { value: "cash", label: "Dinheiro" }]} className="h-8 w-40" inputClassName="text-[11px]" />{method === "cash" && !overview.openCashSession ? <span className="text-[10px] text-destructive">Abra o caixa para pagar em dinheiro.</span> : null}</> : null}
         </div>
         {message ? <p role="alert" className="text-[11px] text-destructive">{message}</p> : null}
         <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit" disabled={pending || (payNow && method === "cash" && !overview.openCashSession)}>{pending ? "Registrando…" : "Confirmar recebimento"}</Button></DialogFooter>
@@ -450,8 +454,8 @@ function BulkConversionDialog({ products, onSaved }: { products: InventoryProduc
     <Button type="button" variant="outline" className="h-8 px-2.5 text-[10px]" onClick={begin}>Converter para granel</Button>
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[500px]"><DialogHeader><DialogTitle className="text-[17px]">Converter estoque</DialogTitle><DialogDescription className="text-[11px]">A saída do produto fechado e a entrada do produto a granel ficam no mesmo lançamento. Lotes e custo médio são preservados.</DialogDescription></DialogHeader>
       {products.length < 2 ? <p className="rounded-md border border-dashed p-4 text-center text-[10px] text-muted-foreground">Cadastre ao menos dois produtos com unidades diferentes para converter estoque.</p> : <form onSubmit={submit} className="space-y-3">
-        <div className="space-y-1.5"><Label>Produto de origem</Label><Select value={sourceProductId} onValueChange={(value) => { setSourceProductId(value ?? ""); setTargetProductId(""); }}><SelectTrigger className="w-full"><SelectValue placeholder="Selecione o produto fechado" /></SelectTrigger><SelectContent>{products.map((product) => <SelectItem key={product.id} value={product.id}>{product.name} · {product.unit}</SelectItem>)}</SelectContent></Select></div>
-        <div className="space-y-1.5"><Label>Produto a granel</Label><Select value={targetProductId || undefined} onValueChange={(value) => setTargetProductId(value ?? "")} disabled={!source}><SelectTrigger className="w-full"><SelectValue placeholder="Selecione o produto de destino" /></SelectTrigger><SelectContent>{targets.map((product) => <SelectItem key={product.id} value={product.id}>{product.name} · {product.unit}</SelectItem>)}</SelectContent></Select>{source && !targets.length ? <p className="text-[10px] text-muted-foreground">Cadastre um produto com outra unidade e o mesmo controle de lote.</p> : null}</div>
+        <div className="space-y-1.5"><Label>Produto de origem</Label><ComboboxField value={sourceProductId} onValueChange={(value) => { setSourceProductId(value); setTargetProductId(""); }} options={products.map((product) => ({ value: product.id, label: `${product.name} · ${product.unit}` }))} placeholder="Selecione o produto fechado" /></div>
+        <div className="space-y-1.5"><Label>Produto a granel</Label><ComboboxField value={targetProductId} onValueChange={setTargetProductId} options={targets.map((product) => ({ value: product.id, label: `${product.name} · ${product.unit}` }))} placeholder="Selecione o produto de destino" disabled={!source} />{source && !targets.length ? <p className="text-[10px] text-muted-foreground">Cadastre um produto com outra unidade e o mesmo controle de lote.</p> : null}</div>
         <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><Label htmlFor="bulk-source-quantity">Quantidade de origem ({source?.unit ?? "un"})</Label><Input id="bulk-source-quantity" type="number" min="0.001" step={source?.unit_precision ? (1 / 10 ** source.unit_precision).toString() : "1"} value={sourceQuantity} onChange={(event) => setSourceQuantity(event.target.value)} required /><p className="text-[9px] text-muted-foreground">Disponível: {source ? formatQuantity(source.quantity, source.unit) : "—"}</p></div><div className="space-y-1.5"><Label htmlFor="bulk-target-factor">Quantidade convertida ({target?.unit ?? "un"})</Label><Input id="bulk-target-factor" type="number" min="0.001" step={target?.unit_precision ? (1 / 10 ** target.unit_precision).toString() : "1"} value={targetPerSource} onChange={(event) => setTargetPerSource(event.target.value)} required /><p className="text-[9px] text-muted-foreground">Cada unidade de origem gera esta quantidade.</p></div></div>
         {source && target ? <div className="rounded-md bg-muted/50 px-3 py-2 text-[10px]">{sourceQuantity || "0"} {source.unit} → {formatQuantity((Number(sourceQuantity.replace(",", ".")) || 0) * (Number(targetPerSource.replace(",", ".")) || 0), target.unit)} {target.unit}</div> : null}
         <div className="space-y-1.5"><Label htmlFor="bulk-reason">Motivo</Label><Input id="bulk-reason" name="reason" defaultValue="Conversão para venda a granel" maxLength={500} required /></div>

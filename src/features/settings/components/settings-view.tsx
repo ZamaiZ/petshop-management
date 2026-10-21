@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ComboboxField } from "@/components/ui/combobox-field";
 import { formatMoney } from "@/lib/format";
 import { storeTimezones } from "@/lib/store-timezones";
 import { archiveService, archiveSupplier, createService, createSupplier, removeStoreLogo, saveStoreProfile, uploadStoreLogo } from "../actions";
@@ -107,7 +107,7 @@ export function SettingsView({ store, role, logoUrl, catalog }: { store: { id: s
           <div className="space-y-1"><Label htmlFor="store-email" className="text-[10px]">E-mail</Label><Input id="store-email" name="email" type="email" defaultValue={store.email ?? ""} maxLength={254} disabled={!isOwner} className="h-9 text-[11px]" /></div>
           <div className="space-y-1"><Label htmlFor="store-city" className="text-[10px]">Cidade</Label><Input id="store-city" name="city" defaultValue={address.city ?? ""} maxLength={100} disabled={!isOwner} className="h-9 text-[11px]" /></div>
           <div className="space-y-1"><Label htmlFor="store-state" className="text-[10px]">Estado</Label><Input id="store-state" name="state" defaultValue={address.state ?? ""} maxLength={2} disabled={!isOwner} className="h-9 text-[11px]" /></div>
-          <div className="space-y-1"><Label htmlFor="store-timezone" className="text-[10px]">Fuso horário</Label><Select value={timezone} onValueChange={(value) => setTimezone(value ?? store.timezone)} disabled={!isOwner}><SelectTrigger id="store-timezone" className="h-9 w-full text-[11px]"><SelectValue /></SelectTrigger><SelectContent>{storeTimezones.map((zone) => <SelectItem key={zone.value} value={zone.value}>{zone.label}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-1"><Label htmlFor="store-timezone" className="text-[10px]">Fuso horário</Label><ComboboxField id="store-timezone" value={timezone} onValueChange={setTimezone} options={storeTimezones} disabled={!isOwner} className="h-9" inputClassName="text-[11px]" /></div>
           <div className="space-y-1 sm:col-span-2"><Label htmlFor="store-street" className="text-[10px]">Endereço</Label><Input id="store-street" name="street" defaultValue={address.street ?? ""} maxLength={200} disabled={!isOwner} className="h-9 text-[11px]" /></div>
         </div>
         {isOwner ? <Button type="submit" className="h-9 px-3 text-[10px]" disabled={pending}>{pending ? "Salvando..." : "Salvar alterações"}</Button> : null}

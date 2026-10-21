@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { DatePickerField } from "@/components/ui/date-picker-field";
 import {
   Dialog,
   DialogContent,
@@ -98,6 +99,7 @@ function CustomerFormDialog() {
 function PetForm({ customerId, onSaved }: { customerId: string; onSaved: () => void }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
+  const [birthDate, setBirthDate] = useState("");
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -112,6 +114,7 @@ function PetForm({ customerId, onSaved }: { customerId: string; onSaved: () => v
         return;
       }
       form.reset();
+      setBirthDate("");
       onSaved();
     });
   }
@@ -123,7 +126,7 @@ function PetForm({ customerId, onSaved }: { customerId: string; onSaved: () => v
         <div className="space-y-1.5"><Label htmlFor={`pet-name-${customerId}`}>Nome</Label><Input id={`pet-name-${customerId}`} name="name" required maxLength={80} /></div>
         <div className="space-y-1.5"><Label htmlFor={`pet-species-${customerId}`}>Espécie</Label><Input id={`pet-species-${customerId}`} name="species" required maxLength={40} placeholder="Cão, gato…" /></div>
         <div className="space-y-1.5"><Label htmlFor={`pet-breed-${customerId}`}>Raça</Label><Input id={`pet-breed-${customerId}`} name="breed" maxLength={80} /></div>
-        <div className="space-y-1.5"><Label htmlFor={`pet-birth-${customerId}`}>Nascimento</Label><Input id={`pet-birth-${customerId}`} name="birthDate" type="date" /></div>
+        <div className="space-y-1.5"><Label htmlFor={`pet-birth-${customerId}`}>Nascimento</Label><DatePickerField id={`pet-birth-${customerId}`} name="birthDate" value={birthDate} onValueChange={setBirthDate} /></div>
         <div className="space-y-1.5"><Label htmlFor={`pet-weight-${customerId}`}>Peso (kg)</Label><Input id={`pet-weight-${customerId}`} name="weightKg" inputMode="decimal" type="number" min="0.001" max="500" step="0.001" /></div>
       </div>
       <div className="space-y-1.5"><Label htmlFor={`pet-care-${customerId}`}>Cuidados</Label><Textarea id={`pet-care-${customerId}`} name="careNotes" rows={2} maxLength={500} /></div>
