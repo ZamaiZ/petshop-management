@@ -81,7 +81,7 @@ export function DatePickerField({
             mode="single"
             locale={ptBR}
             selected={selectedDate}
-            onSelect={(date) => {
+            onSelect={(date: Date | undefined) => {
               onValueChange(date ? format(date, "yyyy-MM-dd") : "")
               setOpen(false)
             }}

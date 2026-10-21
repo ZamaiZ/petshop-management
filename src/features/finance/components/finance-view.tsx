@@ -25,6 +25,7 @@ import { ComboboxField } from "@/components/ui/combobox-field";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { addCivilDays } from "@/lib/date";
 import { formatMoney, formatMoneyInput, formatShortDate, formatTime, localDateKey } from "@/lib/format";
+import { parseMoneyToCents } from "@/lib/inputs";
 import { closeCash, createExpense, createExpenseCategory, moveCash, payPayable, receiveReceivable } from "../actions";
 import type { FinanceOverview, FinancePayable, FinanceReceivable } from "../queries";
 import { CashDenominationFields, cashCountPayload, cashCountTotal, type CashCountMap } from "./cash-denominations";
@@ -240,14 +241,14 @@ export function FinanceView({ overview, timezone, today }: { overview: FinanceOv
     { accessorKey: "original_cents", header: "Original", cell: ({ row }) => formatMoney(row.original.original_cents) },
     { accessorKey: "remaining_cents", header: "Saldo", cell: ({ row }) => <span className="font-medium tabular-nums">{formatMoney(row.original.remaining_cents)}</span> },
     { id: "action", header: "", enableSorting: false, cell: ({ row }) => <ReceiveReceivableDialog receivable={row.original} cashSessionId={overview.cashSession?.id ?? null} /> },
-  ], [overview.cashSession?.id, router]);
+  ], [overview.cashSession?.id]);
   const payableColumns = useMemo<DataTableColumn<FinancePayable>[]>(() => [
     { accessorKey: "description", header: "Conta", cell: ({ row }) => <div><p className="font-medium">{row.original.description}</p><p className="mt-1 text-[10px] text-muted-foreground">{[row.original.supplier, row.original.category].filter(Boolean).join(" · ") || "Despesa da loja"}</p></div> },
     { accessorKey: "due_on", header: "Vencimento", cell: ({ row }) => formatShortDate(row.original.due_on) },
     { accessorKey: "original_cents", header: "Original", cell: ({ row }) => formatMoney(row.original.original_cents) },
     { accessorKey: "remaining_cents", header: "Saldo", cell: ({ row }) => <span className="font-medium tabular-nums">{formatMoney(row.original.remaining_cents)}</span> },
     { id: "action", header: "", enableSorting: false, cell: ({ row }) => <PayPayableDialog payable={row.original} cashSessionId={overview.cashSession?.id ?? null} /> },
-  ], [overview.cashSession?.id, router]);
+  ], [overview.cashSession?.id]);
   const cashIn = overview.cashMovements.filter((movement) => movement.amount_cents > 0).reduce((sum, movement) => sum + movement.amount_cents, 0);
 
   return <MutationRegion scope="finance" label="Atualizando caixa, saldos e contas…"><div className="space-y-5">
