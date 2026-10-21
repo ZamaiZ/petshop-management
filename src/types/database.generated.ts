@@ -23,11 +23,15 @@ export type Database = {
         created_at: string;
         updated_at: string;
         archived_at: string | null;
+        platform_active: boolean;
+        platform_active_changed_at: string | null;
+        platform_active_changed_by: string | null;
       }>;
       store_memberships: Table<{
         id: string;
         store_id: string;
         user_id: string;
+        role: "owner" | "employee";
         active: boolean;
         created_at: string;
         updated_at: string;
@@ -504,6 +508,82 @@ export type Database = {
         Args: { p_store: string };
         Returns: Json;
       };
+      current_access_context: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      create_platform_invitation: {
+        Args: { p_invitation_type: string; p_email: string; p_store_id: string | null; p_token_hash: string };
+        Returns: Json;
+      };
+      platform_admin_list_stores: {
+        Args: Record<PropertyKey, never>;
+        Returns: Array<{
+          store_id: string;
+          store_name: string;
+          platform_active: boolean;
+          platform_active_changed_at: string | null;
+          created_at: string;
+          owner_user_id: string | null;
+          owner_email: string | null;
+        }>;
+      };
+      platform_admin_set_store_active: {
+        Args: { p_store_id: string; p_active: boolean };
+        Returns: boolean;
+      };
+      platform_admin_list_invitations: {
+        Args: Record<PropertyKey, never>;
+        Returns: Array<{
+          invitation_id: string;
+          email_normalized: string;
+          created_at: string;
+          expires_at: string;
+          accepted_at: string | null;
+          revoked_at: string | null;
+        }>;
+      };
+      owner_list_employee_invitations: {
+        Args: { p_store_id: string };
+        Returns: Array<{
+          invitation_id: string;
+          email_normalized: string;
+          created_at: string;
+          expires_at: string;
+          accepted_at: string | null;
+          revoked_at: string | null;
+        }>;
+      };
+      owner_list_store_members: {
+        Args: { p_store_id: string };
+        Returns: Array<{
+          user_id: string;
+          email: string | null;
+          role: string;
+          active: boolean;
+          joined_at: string;
+        }>;
+      };
+      revoke_platform_invitation: {
+        Args: { p_invitation_id: string };
+        Returns: boolean;
+      };
+      reserve_platform_invitation: {
+        Args: { p_token_hash: string; p_email: string; p_rate_key: string };
+        Returns: Json;
+      };
+      release_platform_invitation_reservation: {
+        Args: { p_invitation_id: string; p_reservation_id: string };
+        Returns: boolean;
+      };
+      resolve_platform_invitation_acceptance: {
+        Args: { p_token_hash: string; p_email: string };
+        Returns: Json;
+      };
+      complete_store_setup: {
+        Args: { p_name: string; p_phone: string | null; p_email: string | null; p_address: Json };
+        Returns: string;
+      };
       start_inventory_count: {
         Args: { p_store: string; p_notes?: string };
         Returns: string;
@@ -539,10 +619,6 @@ export type Database = {
       move_delivery: {
         Args: { p_store: string; p_delivery: string; p_status: string; p_position: number; p_expected_version: number; p_reason?: string };
         Returns: number;
-      };
-      issue_registration_ticket: {
-        Args: { p_password: string; p_email: string; p_store_name: string; p_rate_key: string };
-        Returns: string;
       };
     };
     Enums: Record<string, never>;

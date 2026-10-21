@@ -1,8 +1,14 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { LuPawPrint } from "react-icons/lu";
+import type { ApplicationAudience } from "@/lib/platform-access/hosts";
 
-export default function AuthLayout({ children }: { children: ReactNode }) {
+export default function AuthLayout({ children, audience = "panel" }: {
+  children: ReactNode;
+  audience?: ApplicationAudience;
+}) {
+  const isAdmin = audience === "admin";
+
   return (
     <main className="grid min-h-dvh bg-background lg:grid-cols-2">
       <section className="relative hidden min-h-dvh flex-col justify-between bg-[#f5f6f8] px-12 py-10 text-foreground lg:flex xl:px-[60px] xl:py-14 dark:bg-[#17181b]">
@@ -13,10 +19,10 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           petshop.
         </Link>
         <div className="pb-1">
-          <h1 className="text-[38px] font-semibold tracking-[-0.045em]">Acesso à loja</h1>
-          <p className="mt-3 text-[14px] text-muted-foreground">Vendas, estoque, agenda e financeiro.</p>
+          <h1 className="text-[38px] font-semibold tracking-[-0.045em]">{isAdmin ? "Acesso à plataforma" : "Acesso à loja"}</h1>
+          <p className="mt-3 text-[14px] text-muted-foreground">{isAdmin ? "Convites e situação dos pet shops." : "Vendas, estoque, agenda e financeiro."}</p>
         </div>
-        <p className="text-xs text-muted-foreground">Gestão simples para cuidar melhor do seu negócio.</p>
+        <p className="text-xs text-muted-foreground">{isAdmin ? "Administração geral da plataforma." : "Gestão simples para cuidar melhor do seu negócio."}</p>
       </section>
       <section className="flex min-h-dvh items-center justify-center px-5 py-10 sm:px-10">
         <div className="w-full max-w-[360px]">

@@ -10,24 +10,9 @@ import { CepLookupField, type CepAddress } from "@/components/ui/cep-lookup-fiel
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { readStoreAddress, type StoreAddress, type StoreAddressField } from "@/lib/store-address-shared";
 import { removeStoreLogo, saveStoreProfile, uploadStoreLogo } from "../actions";
 import { MutationRegion, runMutationFeedback } from "@/components/feedback/mutation-feedback";
-
-type AddressField = "postal_code" | "street" | "number" | "complement" | "district" | "city" | "state" | "reference";
-type StoreAddress = Record<AddressField, string>;
-
-function storeAddress(value: unknown): StoreAddress {
-  const address = typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-  const fields: AddressField[] = ["postal_code", "street", "number", "complement", "district", "city", "state", "reference"];
-  return Object.fromEntries(fields.map((field) => [
-    field,
-    field === "postal_code"
-      ? (typeof address[field] === "string" ? address[field].replace(/\D/g, "").slice(0, 8) : "")
-      : (typeof address[field] === "string" ? address[field] : ""),
-  ])) as StoreAddress;
-}
 
 function keepUntouched(current: string, previous: string | undefined) {
   return !current.trim() || (previous !== undefined && current.trim() === previous.trim());
@@ -41,9 +26,9 @@ export function SettingsView({ store, logoUrl }: {
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [address, setAddress] = useState(() => storeAddress(store.address));
+  const [address, setAddress] = useState(() => readStoreAddress(store.address));
 
-  function changeAddress(field: AddressField, value: string) {
+  function changeAddress(field: StoreAddressField, value: string) {
     setAddress((current) => ({ ...current, [field]: value }));
   }
 

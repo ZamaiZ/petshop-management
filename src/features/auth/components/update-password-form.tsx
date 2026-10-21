@@ -23,11 +23,14 @@ export function UpdatePasswordForm() {
         body: JSON.stringify({ password: formData.get("password") }),
       }).catch(() => null);
       const payload = response ? await response.json().catch(() => null) : null;
-      return { ok: Boolean(response?.ok), message: payload?.message };
-    }, success: { title: "Senha atualizada", description: "Sua conta já pode acessar a loja." }, failureTitle: "Não foi possível atualizar a senha", unexpectedMessage: "Confira sua conexão e tente novamente." });
-    const response = { ok: result.ok };
+      return {
+        ok: Boolean(response?.ok),
+        message: payload?.message,
+        destination: typeof payload?.destination === "string" ? payload.destination : null,
+      };
+    }, success: { title: "Senha atualizada", description: "Sua nova senha já pode ser usada para entrar." }, failureTitle: "Não foi possível atualizar a senha", unexpectedMessage: "Confira sua conexão e tente novamente." });
 
-    if (!response?.ok) {
+    if (!result.ok) {
       setMessage(result?.message ?? "Não foi possível atualizar a senha agora.");
       setPending(false);
       return;
@@ -35,14 +38,14 @@ export function UpdatePasswordForm() {
 
     setMessage("Senha atualizada. Você já pode continuar.");
     setPending(false);
-    router.replace("/dashboard");
+    router.replace(result.destination ?? "/login");
   }
 
   return (
     <MutationRegion scope="auth" label="Atualizando sua senha…"><div>
       <div className="mb-7">
         <h2 className="text-[24px] font-semibold tracking-[-0.04em]">Criar nova senha</h2>
-        <p className="mt-2 text-[12px] text-muted-foreground">Escolha uma senha pessoal para acessar sua loja.</p>
+        <p className="mt-2 text-[12px] text-muted-foreground">Escolha uma senha pessoal para acessar sua conta.</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4" aria-busy={pending}>
         <AuthPasswordField id="password" label="Nova senha" autoComplete="new-password" minLength={12} />

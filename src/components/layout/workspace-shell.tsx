@@ -56,6 +56,7 @@ import { PageTransition } from "@/components/layout/page-transition";
 import { RealtimeProvider } from "@/components/providers/realtime-provider";
 import { runMutationFeedback } from "@/components/feedback/mutation-feedback";
 import { THEME_COOKIE_MAX_AGE, THEME_COOKIE_NAME, writeBrowserPreferenceCookie, type Theme } from "@/lib/ui-preferences";
+import type { StoreRole } from "@/lib/platform-access/types";
 
 type StoreInfo = { id: string; name: string; logo_url: string | null };
 
@@ -71,6 +72,7 @@ const navigationGroups = [
     { href: "/estoque", label: "Estoque", icon: LuPackage },
     { href: "/servicos", label: "Serviços", icon: LuScissors },
     { href: "/fornecedores", label: "Fornecedores", icon: LuBuilding2 },
+    { href: "/equipe", label: "Equipe", icon: LuUsersRound },
   ] },
   { label: "Financeiro", items: [{ href: "/financeiro", label: "Financeiro", icon: LuCreditCard }] },
 ];
@@ -85,6 +87,7 @@ const pageTitles: Record<string, string> = {
   financeiro: "Financeiro",
   servicos: "Serviços",
   fornecedores: "Fornecedores",
+  equipe: "Equipe",
   configuracoes: "Configurações",
 };
 
@@ -92,7 +95,7 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || (href !== "/dashboard" && pathname.startsWith(`${href}/`));
 }
 
-function AppSidebar({ store, pathname }: { store: StoreInfo; pathname: string }) {
+function AppSidebar({ store, pathname, role }: { store: StoreInfo; pathname: string; role: StoreRole }) {
   const { state, isMobile, openMobile } = useSidebar();
   const isExpanded = isMobile ? openMobile : state === "expanded";
   const toggleLabel = isMobile
@@ -134,7 +137,7 @@ function AppSidebar({ store, pathname }: { store: StoreInfo; pathname: string })
             <SidebarGroupLabel className="px-3 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground group-data-[collapsible=icon]:sr-only">{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-1 group-data-[collapsible=icon]:items-center">
-                {group.items.map(({ href, label, icon: Icon }) => {
+              {group.items.filter((item) => item.href !== "/equipe" || role === "owner").map(({ href, label, icon: Icon }) => {
                   const active = isActivePath(pathname, href);
                   return (
                     <SidebarMenuItem key={href}>
@@ -248,6 +251,7 @@ function ShellHeader({
 export function WorkspaceShell({
   children,
   store,
+  role,
   userId,
   userEmail,
   initialTheme,
@@ -255,6 +259,7 @@ export function WorkspaceShell({
 }: {
   children: ReactNode;
   store: StoreInfo;
+  role: StoreRole;
   userId: string;
   userEmail: string;
   initialTheme: Theme;
@@ -324,7 +329,7 @@ export function WorkspaceShell({
           style={{ "--sidebar-width": "224px", "--sidebar-width-icon": "74px" } as CSSProperties}
           className="min-h-dvh"
         >
-          <AppSidebar store={store} pathname={pathname} />
+          <AppSidebar store={store} pathname={pathname} role={role} />
           <SidebarInset className="min-h-dvh bg-[#f6f7f9] dark:bg-background">
             <ShellHeader
               store={store}
