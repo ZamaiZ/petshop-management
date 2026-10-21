@@ -63,6 +63,45 @@ export async function createCategory(name: string) {
   return { ok: true };
 }
 
+export async function updateCategory(input: unknown) {
+  const parsed = z.object({ id: z.string().uuid(), name: z.string().trim().min(1).max(100) }).safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Informe o nome da categoria." };
+  const context = await getUserContext();
+  if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("categories").update({ name: parsed.data.name }).eq("store_id", context.store.id).eq("id", parsed.data.id).select("id").maybeSingle();
+  if (error) return { ok: false, message: error.code === "23505" ? "Já existe uma categoria com esse nome." : "Não foi possível atualizar a categoria." };
+  if (!data) return { ok: false, message: "Categoria não encontrada." };
+  revalidatePath("/estoque");
+  return { ok: true };
+}
+
+export async function archiveCategory(id: string) {
+  const parsed = z.string().uuid().safeParse(id);
+  if (!parsed.success) return { ok: false, message: "Categoria inválida." };
+  const context = await getUserContext();
+  if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("categories").update({ archived_at: new Date().toISOString() }).eq("store_id", context.store.id).eq("id", parsed.data).is("archived_at", null).select("id").maybeSingle();
+  if (error) return { ok: false, message: "Não foi possível arquivar a categoria." };
+  if (!data) return { ok: false, message: "Categoria não encontrada ou já arquivada." };
+  revalidatePath("/estoque");
+  return { ok: true };
+}
+
+export async function restoreCategory(id: string) {
+  const parsed = z.string().uuid().safeParse(id);
+  if (!parsed.success) return { ok: false, message: "Categoria inválida." };
+  const context = await getUserContext();
+  if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("categories").update({ archived_at: null }).eq("store_id", context.store.id).eq("id", parsed.data).not("archived_at", "is", null).select("id").maybeSingle();
+  if (error) return { ok: false, message: error.code === "23505" ? "Já existe uma categoria ativa com esse nome." : "Não foi possível reativar a categoria." };
+  if (!data) return { ok: false, message: "Categoria não encontrada ou já ativa." };
+  revalidatePath("/estoque");
+  return { ok: true };
+}
+
 export async function createProduct(input: unknown) {
   const parsed = productSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: "Confira os dados do produto." };

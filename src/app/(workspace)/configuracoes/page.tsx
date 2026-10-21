@@ -12,5 +12,5 @@ export default async function SettingsPage() {
   const [catalog, supabase] = await Promise.all([getSettingsCatalog(context.store.id), createClient()]);
   if (!catalog.data) return <Alert variant="destructive"><AlertTitle>Falha ao carregar configurações</AlertTitle><AlertDescription>{catalog.error}</AlertDescription></Alert>;
   const logoResult = context.store.logo_path ? await supabase.storage.from("store-assets").createSignedUrl(context.store.logo_path, 60 * 60 * 24) : null;
-  return <SettingsView store={context.store} role={context.role} logoUrl={logoResult?.data?.signedUrl ?? null} catalog={catalog.data} />;
+  return <SettingsView store={context.store} logoUrl={logoResult?.data?.signedUrl ?? null} catalog={catalog.data} />;
 }

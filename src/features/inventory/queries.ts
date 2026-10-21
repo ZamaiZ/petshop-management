@@ -37,8 +37,8 @@ export type InventoryOverview = {
   products: InventoryProduct[];
   movements: InventoryMovement[];
   movementCount: number;
-  categories: { id: string; name: string }[];
-  suppliers: { id: string; name: string }[];
+  categories: { id: string; name: string; archived_at: string | null }[];
+  suppliers: { id: string; name: string; cnpj: string | null }[];
   openCashSession: string | null;
 };
 
@@ -52,8 +52,8 @@ export async function getInventoryOverview(storeId: string) {
       .is("archived_at", null)
       .order("name", { ascending: true })
       .limit(500),
-    supabase.from("categories").select("id, name").eq("store_id", storeId).is("archived_at", null).order("name"),
-    supabase.from("suppliers").select("id, name").eq("store_id", storeId).is("archived_at", null).order("name"),
+    supabase.from("categories").select("id, name, archived_at").eq("store_id", storeId).order("name"),
+    supabase.from("suppliers").select("id, name, cnpj").eq("store_id", storeId).is("archived_at", null).order("name"),
     supabase.from("cash_sessions").select("id").eq("store_id", storeId).eq("status", "open").order("opened_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
 
@@ -80,7 +80,7 @@ export async function getInventoryOverview(storeId: string) {
     return { data: null, error: "Não foi possível carregar os saldos e movimentações." };
   }
 
-  const categoryNames = new Map(categoriesResult.data.map((category) => [category.id, category.name]));
+  const categoriesById = new Map(categoriesResult.data.map((category) => [category.id, category]));
   const balances = new Map(balancesResult.data.map((balance) => [balance.product_id, balance.quantity]));
   const lotsByProduct = new Map<string, InventoryProduct["lots"]>();
   const packagingsByProduct = new Map<string, InventoryProduct["packagings"]>();
@@ -100,7 +100,10 @@ export async function getInventoryOverview(storeId: string) {
     data: {
       products: productsResult.data.map((product) => ({
         ...product,
-        category: product.category_id ? categoryNames.get(product.category_id) ?? null : null,
+        category: product.category_id ? (() => {
+          const category = categoriesById.get(product.category_id);
+          return category ? `${category.name}${category.archived_at ? " (arquivada)" : ""}` : null;
+        })() : null,
         quantity: balances.get(product.id) ?? 0,
         packagings: packagingsByProduct.get(product.id) ?? [],
         lots: lotsByProduct.get(product.id) ?? [],

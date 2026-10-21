@@ -5,6 +5,14 @@ export function formatMoney(cents: number) {
   return moneyFormatter.format(cents / 100);
 }
 
+export function formatMoneyInput(cents: number) {
+  const value = Math.trunc(cents);
+  const sign = value < 0 ? "-" : "";
+  const absolute = Math.abs(value);
+  const reais = String(Math.floor(absolute / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${sign}${reais},${String(absolute % 100).padStart(2, "0")}`;
+}
+
 export function formatQuantity(value: number, unit?: string) {
   const quantity = numberFormatter.format(value);
   return unit ? `${quantity} ${unit}` : quantity;

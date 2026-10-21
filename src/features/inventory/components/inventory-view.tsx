@@ -29,12 +29,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { BrlInput } from "@/components/ui/brl-input";
 import { Label } from "@/components/ui/label";
 import { ComboboxField } from "@/components/ui/combobox-field";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatMoney, formatQuantity, formatShortDate } from "@/lib/format";
+import { formatMoney, formatMoneyInput, formatQuantity, formatShortDate } from "@/lib/format";
+import { formatCnpj } from "@/lib/cnpj";
 import { parseMoneyToCents } from "@/lib/inputs";
-import { adjustStock, archiveProduct, completeInventoryCount, convertToBulk, createCategory, createProduct, deleteProductPackaging, receiveGoods, saveProductPackaging, startInventoryCount, updateProduct } from "../actions";
+import { adjustStock, archiveCategory, archiveProduct, completeInventoryCount, convertToBulk, createCategory, createProduct, deleteProductPackaging, receiveGoods, restoreCategory, saveProductPackaging, startInventoryCount, updateCategory, updateProduct } from "../actions";
 import type { InventoryMovement, InventoryOverview, InventoryProduct } from "../queries";
 
 type ReceiptLine = { productId: string; packages: string; conversionFactor: string; totalCost: string; lotCode: string; expiresOn: string };
@@ -90,13 +92,13 @@ function ProductDialog({ categories }: { categories: InventoryOverview["categori
               <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="product-name">Nome</Label><Input id="product-name" name="name" required maxLength={160} /></div>
               <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="product-description">Descrição</Label><Input id="product-description" name="description" maxLength={500} /></div>
               <div className="space-y-1.5"><Label htmlFor="product-brand">Marca</Label><Input id="product-brand" name="brand" maxLength={100} /></div>
-              <div className="space-y-1.5"><Label htmlFor="product-category">Categoria</Label><ComboboxField id="product-category" value={categoryId} onValueChange={setCategoryId} options={categories.map((category) => ({ value: category.id, label: category.name }))} placeholder="Sem categoria" /></div>
+              <div className="space-y-1.5"><Label htmlFor="product-category">Categoria</Label><ComboboxField id="product-category" value={categoryId} onValueChange={setCategoryId} options={categories.filter((category) => !category.archived_at).map((category) => ({ value: category.id, label: category.name }))} placeholder="Sem categoria" /></div>
               <div className="space-y-1.5"><Label htmlFor="product-sku">SKU</Label><Input id="product-sku" name="sku" maxLength={80} /></div>
               <div className="space-y-1.5"><Label htmlFor="product-barcode">Código de barras</Label><Input id="product-barcode" name="barcode" inputMode="numeric" maxLength={80} /></div>
               <div className="space-y-1.5"><Label htmlFor="product-unit">Unidade base</Label><ComboboxField id="product-unit" value={unit} onValueChange={(nextUnit) => { setUnit(nextUnit); setPrecision(["kg", "g", "L", "ml"].includes(nextUnit) ? "3" : "0"); }} options={[{ value: "un", label: "Unidade" }, { value: "kg", label: "Quilograma" }, { value: "g", label: "Grama" }, { value: "L", label: "Litro" }, { value: "ml", label: "Mililitro" }, { value: "pacote", label: "Pacote" }, { value: "caixa", label: "Caixa" }]} /></div>
               <div className="space-y-1.5"><Label htmlFor="product-precision">Casas decimais</Label><ComboboxField id="product-precision" name="precision" value={precision} onValueChange={setPrecision} options={[{ value: "0", label: "0" }, { value: "1", label: "1" }, { value: "2", label: "2" }, { value: "3", label: "3" }]} /></div>
-              <div className="space-y-1.5"><Label htmlFor="product-price">Preço de venda (R$)</Label><Input id="product-price" name="salePrice" inputMode="decimal" placeholder="0,00" required /></div>
-              <div className="space-y-1.5"><Label htmlFor="product-cost">Custo médio (R$)</Label><Input id="product-cost" name="averageCost" inputMode="decimal" placeholder="0,00" defaultValue="0,00" required /></div>
+              <div className="space-y-1.5"><Label htmlFor="product-price">Preço de venda (R$)</Label><BrlInput id="product-price" name="salePrice" placeholder="0,00" required /></div>
+              <div className="space-y-1.5"><Label htmlFor="product-cost">Custo médio (R$)</Label><BrlInput id="product-cost" name="averageCost" placeholder="0,00" defaultValue="0,00" required /></div>
               <div className="space-y-1.5"><Label htmlFor="product-minimum">Estoque mínimo</Label><Input id="product-minimum" name="minimumStock" type="number" min="0" step="0.001" defaultValue="0" /></div>
             </div>
             <label className="flex cursor-pointer items-center gap-3 rounded-md border border-border px-3 py-2.5">
@@ -112,27 +114,45 @@ function ProductDialog({ categories }: { categories: InventoryOverview["categori
   );
 }
 
-function CategoryDialog() {
+function CategoryDialog({ categories }: { categories: InventoryOverview["categories"] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
+  const [editing, setEditing] = useState<InventoryOverview["categories"][number] | null>(null);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     setMessage("");
     startTransition(async () => {
-      const result = await createCategory(String(data.get("name") ?? ""));
+      const name = String(data.get("name") ?? "");
+      const result = editing ? await updateCategory({ id: editing.id, name }) : await createCategory(name);
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
-      setOpen(false);
+      setEditing(null);
+      form.reset();
+      router.refresh();
+    });
+  }
+
+  function changeCategory(category: InventoryOverview["categories"][number], action: "archive" | "restore") {
+    setMessage("");
+    startTransition(async () => {
+      const result = action === "archive" ? await archiveCategory(category.id) : await restoreCategory(category.id);
+      if (!result.ok) { setMessage(result.message ?? "Não foi possível atualizar a categoria."); return; }
+      if (editing?.id === category.id) setEditing(null);
       router.refresh();
     });
   }
 
   return <>
-    <Button variant="outline" className="h-9 rounded-md px-3 text-[11px]" onClick={() => setOpen(true)}>Categorias</Button>
-    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="sm:max-w-[380px]"><DialogHeader><DialogTitle className="text-[17px]">Nova categoria</DialogTitle><DialogDescription className="text-[11px]">Organize os produtos do catálogo.</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-3"><Label htmlFor="category-name">Nome</Label><Input id="category-name" name="name" required maxLength={100} />{message ? <p role="alert" className="text-[11px] text-destructive">{message}</p> : null}<DialogFooter><Button type="submit" disabled={pending}>{pending ? "Salvando…" : "Salvar categoria"}</Button></DialogFooter></form></DialogContent></Dialog>
+    <Button type="button" variant="outline" className="h-9 rounded-md px-3 text-[11px]" onClick={() => { setEditing(null); setMessage(""); setOpen(true); }}>Categorias</Button>
+    <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) setEditing(null); }}><DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-[460px]"><DialogHeader><DialogTitle className="text-[17px]">Categorias de produtos</DialogTitle><DialogDescription className="text-[11px]">Edite, arquive ou reative categorias sem perder os vínculos históricos.</DialogDescription></DialogHeader>
+      <form key={editing?.id ?? "new-category"} onSubmit={submit} className="space-y-3 rounded-md border border-border p-3"><div className="space-y-1.5"><Label htmlFor="category-name">{editing ? "Editar categoria" : "Nova categoria"}</Label><Input id="category-name" name="name" defaultValue={editing?.name ?? ""} required maxLength={100} /></div>{message ? <p role="alert" className="text-[11px] text-destructive">{message}</p> : null}<div className="flex justify-end gap-2">{editing ? <Button type="button" variant="ghost" onClick={() => { setEditing(null); setMessage(""); }}>Cancelar edição</Button> : null}<Button type="submit" disabled={pending}>{pending ? "Salvando…" : editing ? "Salvar alterações" : "Criar categoria"}</Button></div></form>
+      <div className="space-y-2">{categories.length ? categories.map((category) => <div key={category.id} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"><div className="min-w-0"><p className="truncate text-[11px] font-medium">{category.name}</p>{category.archived_at ? <p className="text-[9px] text-muted-foreground">Arquivada</p> : null}</div><div className="flex shrink-0 gap-1">{!category.archived_at ? <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px]" onClick={() => { setEditing(category); setMessage(""); }}>Editar</Button> : null}<Button type="button" variant="ghost" size="sm" className={`h-7 px-2 text-[10px] ${category.archived_at ? "" : "text-destructive"}`} disabled={pending} onClick={() => changeCategory(category, category.archived_at ? "restore" : "archive")}>{category.archived_at ? "Reativar" : "Arquivar"}</Button></div></div>) : <p className="rounded-md border border-dashed px-3 py-4 text-center text-[10px] text-muted-foreground">Nenhuma categoria cadastrada.</p>}</div>
+      <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Fechar</Button></DialogFooter>
+    </DialogContent></Dialog>
   </>;
 }
 
@@ -245,10 +265,10 @@ function EditProductDialog({ product, categories, onSaved }: { product: Inventor
             <div className="space-y-1.5 sm:col-span-2"><Label htmlFor={`edit-product-name-${product.id}`}>Nome</Label><Input id={`edit-product-name-${product.id}`} name="name" defaultValue={product.name} maxLength={160} required /></div>
             <div className="space-y-1.5 sm:col-span-2"><Label htmlFor={`edit-product-description-${product.id}`}>Descrição</Label><Input id={`edit-product-description-${product.id}`} name="description" defaultValue={product.description ?? ""} maxLength={500} /></div>
             <div className="space-y-1.5"><Label htmlFor={`edit-product-brand-${product.id}`}>Marca</Label><Input id={`edit-product-brand-${product.id}`} name="brand" defaultValue={product.brand ?? ""} maxLength={100} /></div>
-            <div className="space-y-1.5"><Label htmlFor={`edit-product-category-${product.id}`}>Categoria</Label><ComboboxField id={`edit-product-category-${product.id}`} value={categoryId} onValueChange={setCategoryId} options={[{ value: "__none", label: "Sem categoria" }, ...categories.map((category) => ({ value: category.id, label: category.name }))]} placeholder="Selecione uma categoria" /></div>
+            <div className="space-y-1.5"><Label htmlFor={`edit-product-category-${product.id}`}>Categoria</Label><ComboboxField id={`edit-product-category-${product.id}`} value={categoryId} onValueChange={setCategoryId} options={[{ value: "__none", label: "Sem categoria" }, ...categories.filter((category) => !category.archived_at || category.id === product.category_id).map((category) => ({ value: category.id, label: `${category.name}${category.archived_at ? " (arquivada)" : ""}` }))]} placeholder="Selecione uma categoria" /></div>
             <div className="space-y-1.5"><Label htmlFor={`edit-product-sku-${product.id}`}>SKU</Label><Input id={`edit-product-sku-${product.id}`} name="sku" defaultValue={product.sku ?? ""} maxLength={80} /></div>
             <div className="space-y-1.5"><Label htmlFor={`edit-product-barcode-${product.id}`}>Código de barras</Label><Input id={`edit-product-barcode-${product.id}`} name="barcode" defaultValue={product.barcode ?? ""} maxLength={80} /></div>
-            <div className="space-y-1.5"><Label htmlFor={`edit-product-price-${product.id}`}>Preço de venda (R$)</Label><Input id={`edit-product-price-${product.id}`} name="salePrice" inputMode="decimal" defaultValue={(product.sale_price_cents / 100).toFixed(2).replace(".", ",")} required /></div>
+            <div className="space-y-1.5"><Label htmlFor={`edit-product-price-${product.id}`}>Preço de venda (R$)</Label><BrlInput id={`edit-product-price-${product.id}`} name="salePrice" defaultValue={formatMoneyInput(product.sale_price_cents)} required /></div>
             <div className="space-y-1.5"><Label htmlFor={`edit-product-minimum-${product.id}`}>Estoque mínimo ({product.unit})</Label><Input id={`edit-product-minimum-${product.id}`} name="minimumStock" inputMode="decimal" defaultValue={String(product.minimum_stock).replace(".", ",")} /></div>
           </div>
           {message ? <p role="alert" className="text-[11px] text-destructive">{message}</p> : null}
@@ -383,7 +403,7 @@ function ReceiptDialog({ overview, onSaved }: { overview: InventoryOverview; onS
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[760px]"><DialogHeader><DialogTitle className="text-[18px]">Receber mercadoria</DialogTitle><DialogDescription className="text-[11px]">O custo, os lotes, o saldo e a conta a pagar serão registrados na mesma operação.</DialogDescription></DialogHeader>
       <form onSubmit={submit} className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5"><Label>Fornecedor</Label><ComboboxField value={supplierId} onValueChange={setSupplierId} options={overview.suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))} placeholder="Sem fornecedor" /></div>
+          <div className="space-y-1.5"><Label>Fornecedor</Label><ComboboxField value={supplierId} onValueChange={setSupplierId} options={overview.suppliers.map((supplier) => ({ value: supplier.id, label: `${supplier.name}${supplier.cnpj ? ` · ${formatCnpj(supplier.cnpj)}` : ""}` }))} placeholder="Sem fornecedor" /></div>
           <div className="space-y-1.5"><Label htmlFor="receipt-due">Vencimento da conta</Label><DatePickerField id="receipt-due" name="dueOn" value={dueOn} onValueChange={setDueOn} required /></div>
         </div>
         <div className="space-y-3">
@@ -394,7 +414,7 @@ function ReceiptDialog({ overview, onSaved }: { overview: InventoryOverview; onS
                 <div className="space-y-1.5 sm:col-span-2"><Label>Produto</Label><ComboboxField value={item.productId} onValueChange={(value) => updateItem(index, "productId", value)} options={overview.products.map((entry) => ({ value: entry.id, label: `${entry.name} · ${entry.unit}` }))} placeholder="Selecione um produto" /></div>
                 <div className="space-y-1.5"><Label>Embalagens recebidas</Label><Input type="number" min="0.001" step="0.001" value={item.packages} onChange={(event) => updateItem(index, "packages", event.target.value)} required /></div>
                 <div className="space-y-1.5"><Label>Unidades base por embalagem</Label><Input type="number" min="0.001" step="0.001" value={item.conversionFactor} onChange={(event) => updateItem(index, "conversionFactor", event.target.value)} required /></div>
-                <div className="space-y-1.5"><Label>Custo total do item (R$)</Label><Input inputMode="decimal" value={item.totalCost} onChange={(event) => updateItem(index, "totalCost", event.target.value)} required /></div>
+                <div className="space-y-1.5"><Label>Custo total do item (R$)</Label><BrlInput value={item.totalCost} onValueChange={(value) => updateItem(index, "totalCost", value)} required /></div>
                 {product?.track_lots ? <><div className="space-y-1.5"><Label>Código do lote</Label><Input value={item.lotCode} onChange={(event) => updateItem(index, "lotCode", event.target.value)} required maxLength={120} /></div><div className="space-y-1.5"><Label htmlFor={`receipt-expires-${index}`}>Validade</Label><DatePickerField id={`receipt-expires-${index}`} value={item.expiresOn} onValueChange={(value) => updateItem(index, "expiresOn", value)} /></div></> : null}
               </div>
               {items.length > 1 ? <div className="mt-2 flex justify-end"><Button type="button" variant="ghost" size="sm" className="h-7 text-[10px] text-muted-foreground" onClick={() => setItems((previous) => previous.filter((_, i) => i !== index))}>Remover item</Button></div> : null}
@@ -551,7 +571,7 @@ export function InventoryView({ overview }: { overview: InventoryOverview }) {
     </section>
     <Tabs value={tab} onValueChange={setTab}>
       <TabsList className="h-9"><TabsTrigger value="products" className="gap-2 text-[11px]"><LuBoxes className="size-3.5" /> Produtos</TabsTrigger><TabsTrigger value="movements" className="gap-2 text-[11px]"><LuHistory className="size-3.5" /> Movimentações</TabsTrigger><TabsTrigger value="count" className="gap-2 text-[11px]"><LuClipboardList className="size-3.5" /> Contagem</TabsTrigger></TabsList>
-      <TabsContent value="products" className="mt-4"><Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><DataTable columns={productColumns} data={visibleProducts} searchPlaceholder="Buscar produto ou código…" emptyMessage="Nenhum produto encontrado." toolbarActions={<div className="flex items-center gap-2"><CategoryDialog /><BulkConversionDialog products={overview.products} onSaved={() => router.refresh()} /><Button type="button" variant={lowStockOnly ? "secondary" : "outline"} className="h-8 px-2.5 text-[10px]" onClick={() => setLowStockOnly((current) => !current)}>{lowStockOnly ? "Todos os produtos" : "Estoque baixo"}</Button></div>} /></Card></TabsContent>
+      <TabsContent value="products" className="mt-4"><Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><DataTable columns={productColumns} data={visibleProducts} searchPlaceholder="Buscar produto ou código…" emptyMessage="Nenhum produto encontrado." toolbarActions={<div className="flex items-center gap-2"><CategoryDialog categories={overview.categories} /><BulkConversionDialog products={overview.products} onSaved={() => router.refresh()} /><Button type="button" variant={lowStockOnly ? "secondary" : "outline"} className="h-8 px-2.5 text-[10px]" onClick={() => setLowStockOnly((current) => !current)}>{lowStockOnly ? "Todos os produtos" : "Estoque baixo"}</Button></div>} /></Card></TabsContent>
       <TabsContent value="movements" className="mt-4"><Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><DataTable columns={movementColumns} data={overview.movements} searchPlaceholder="Buscar produto, tipo ou motivo…" emptyMessage="Nenhuma movimentação registrada." toolbarActions={<span className="px-2 text-[10px] text-muted-foreground">{overview.movementCount} movimentações</span>} /></Card></TabsContent>
       <TabsContent value="count" className="mt-4"><Card className="gap-0 rounded-[10px] border-border/90 p-5 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="text-[13px] font-semibold">Contagem de estoque</h2><p className="mt-1 text-[11px] text-muted-foreground">A fotografia do saldo detecta movimentações concorrentes antes de aplicar diferenças.</p></div><CountDialog onSaved={() => router.refresh()} /></div><div className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-md border border-border p-3"><p className="text-[10px] text-muted-foreground">Itens ativos</p><p className="mt-1 text-[17px] font-semibold">{overview.products.length}</p></div><div className="rounded-md border border-border p-3"><p className="text-[10px] text-muted-foreground">Produtos por lote</p><p className="mt-1 text-[17px] font-semibold">{overview.products.filter((product) => product.track_lots).length}</p></div><div className="rounded-md border border-border p-3"><p className="text-[10px] text-muted-foreground">Aplicação</p><p className="mt-1 text-[11px]">Versionada e atômica</p></div></div></Card></TabsContent>
     </Tabs>

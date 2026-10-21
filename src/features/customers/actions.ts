@@ -97,6 +97,66 @@ export async function createPet(formData: FormData) {
   return { ok: true };
 }
 
+export async function updatePet(formData: FormData) {
+  const parsed = petSchema.extend({ id: z.string().uuid() }).safeParse({
+    id: readText(formData, "id"),
+    customerId: readText(formData, "customerId"),
+    name: readText(formData, "name"),
+    species: readText(formData, "species"),
+    breed: readText(formData, "breed"),
+    birthDate: readText(formData, "birthDate"),
+    weightKg: readText(formData, "weightKg"),
+    careNotes: readText(formData, "careNotes"),
+    behaviorNotes: readText(formData, "behaviorNotes"),
+  });
+  if (!parsed.success) return { ok: false, message: "Confira os dados do pet." };
+
+  const context = await getUserContext();
+  if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
+
+  const supabase = await createClient();
+  const { data: customer } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("store_id", context.store.id)
+    .eq("id", parsed.data.customerId)
+    .is("archived_at", null)
+    .maybeSingle();
+  if (!customer) return { ok: false, message: "Cliente não encontrado." };
+
+  const { data: updatedPet, error } = await supabase.from("pets").update({
+    name: parsed.data.name,
+    species: parsed.data.species,
+    breed: parsed.data.breed,
+    birth_date: parsed.data.birthDate,
+    weight_kg: parsed.data.weightKg,
+    care_notes: parsed.data.careNotes,
+    behavior_notes: parsed.data.behaviorNotes,
+  }).eq("store_id", context.store.id).eq("customer_id", customer.id).eq("id", parsed.data.id).is("archived_at", null).select("id").maybeSingle();
+
+  if (error) return { ok: false, message: "Não foi possível atualizar o pet." };
+  if (!updatedPet) return { ok: false, message: "Pet não encontrado ou já arquivado." };
+  revalidatePath("/clientes");
+  revalidatePath("/agenda");
+  return { ok: true };
+}
+
+export async function archivePet(customerId: string, petId: string) {
+  const parsed = z.object({ customerId: z.string().uuid(), petId: z.string().uuid() }).safeParse({ customerId, petId });
+  if (!parsed.success) return { ok: false, message: "Pet inválido." };
+  const context = await getUserContext();
+  if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("pets").update({ archived_at: new Date().toISOString() })
+    .eq("store_id", context.store.id).eq("customer_id", parsed.data.customerId).eq("id", parsed.data.petId).is("archived_at", null).select("id").maybeSingle();
+  if (error) return { ok: false, message: "Não foi possível arquivar o pet." };
+  if (!data) return { ok: false, message: "Pet não encontrado ou já arquivado." };
+  revalidatePath("/clientes");
+  revalidatePath("/agenda");
+  return { ok: true };
+}
+
 export async function createCustomerAddress(input: unknown) {
   const parsed = z.object({
     customerId: z.string().uuid(),

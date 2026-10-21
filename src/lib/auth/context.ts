@@ -14,7 +14,7 @@ export const getUserContext = cache(async () => {
 
   const { data: membership, error: membershipError } = await supabase
     .from("store_memberships")
-    .select("store_id, role")
+    .select("store_id")
     .eq("user_id", authData.user.id)
     .eq("active", true)
     .limit(1)
@@ -40,7 +40,6 @@ export const getUserContext = cache(async () => {
 
   return {
     user: authData.user,
-    role: membership.role,
     store: storeResult.data,
     preferences: preferencesResult.data ?? { theme: "system" as const, sidebar_collapsed: false },
   };

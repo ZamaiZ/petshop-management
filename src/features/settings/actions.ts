@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getUserContext } from "@/lib/auth/context";
+import { isValidCnpj, normalizeCnpj } from "@/lib/cnpj";
 import { parseMoneyToCents } from "@/lib/inputs";
 import { supportedStoreTimezones } from "@/lib/store-timezones";
 import { createClient } from "@/lib/supabase/server";
@@ -59,7 +60,6 @@ export async function saveStoreProfile(input: unknown) {
   if (!parsed.success) return { ok: false, message: "Confira o nome e os dados da loja." };
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
-  if (context.role !== "owner") return { ok: false, message: "Somente o proprietário pode alterar os dados da loja." };
   const existingAddress = typeof context.store.address === "object" && context.store.address !== null && !Array.isArray(context.store.address)
     ? context.store.address
     : {};
@@ -120,7 +120,6 @@ function detectImage(bytes: Uint8Array) {
 export async function uploadStoreLogo(formData: FormData) {
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
-  if (context.role !== "owner") return { ok: false, message: "Somente o proprietário pode alterar a logo." };
   const file = formData.get("file");
   if (!(file instanceof File) || file.size < 1 || file.size > 2 * 1024 * 1024) return { ok: false, message: "Escolha uma imagem de até 2 MB." };
   const fileBuffer = await file.arrayBuffer();
@@ -147,7 +146,6 @@ export async function uploadStoreLogo(formData: FormData) {
 export async function removeStoreLogo() {
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
-  if (context.role !== "owner") return { ok: false, message: "Somente o proprietário pode remover a logo." };
   const supabase = await createClient();
   const { error } = await supabase.from("stores").update({ logo_path: null }).eq("id", context.store.id);
   if (error) return { ok: false, message: "Não foi possível remover a logo." };
@@ -170,6 +168,22 @@ export async function createService(input: unknown) {
   return { ok: true };
 }
 
+export async function updateService(input: unknown) {
+  const parsed = z.object({ id: z.string().uuid(), name: z.string().trim().min(2).max(120), price: z.string().trim().min(1).max(40), duration: z.coerce.number().int().min(15).max(600) }).safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Confira nome, valor e duração do serviço." };
+  const priceCents = parseMoneyToCents(parsed.data.price);
+  if (priceCents === null || priceCents < 0) return { ok: false, message: "Informe um valor válido." };
+  const context = await getUserContext();
+  if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("services").update({ name: parsed.data.name, price_cents: priceCents, duration_minutes: parsed.data.duration })
+    .eq("store_id", context.store.id).eq("id", parsed.data.id).select("id").maybeSingle();
+  if (error) return { ok: false, message: "Não foi possível atualizar o serviço." };
+  if (!data) return { ok: false, message: "Serviço não encontrado." };
+  for (const path of ["/configuracoes", "/agenda", "/vendas/nova"]) revalidatePath(path);
+  return { ok: true };
+}
+
 export async function archiveService(id: string) {
   const parsed = z.string().uuid().safeParse(id);
   if (!parsed.success) return { ok: false, message: "Serviço inválido." };
@@ -182,14 +196,83 @@ export async function archiveService(id: string) {
   return { ok: true };
 }
 
-export async function createSupplier(input: unknown) {
-  const parsed = z.object({ name: z.string().trim().min(2).max(120), phone: z.string().trim().max(100), email: z.union([z.string().trim().email().max(254), z.literal("")]) }).safeParse(input);
-  if (!parsed.success) return { ok: false, message: "Confira o nome e os contatos do fornecedor." };
+export async function restoreService(id: string) {
+  const parsed = z.string().uuid().safeParse(id);
+  if (!parsed.success) return { ok: false, message: "Serviço inválido." };
   const context = await getUserContext();
   if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
   const supabase = await createClient();
-  const { error } = await supabase.from("suppliers").insert({ store_id: context.store.id, name: parsed.data.name, phone: parsed.data.phone || null, email: parsed.data.email || null, address: {} });
-  if (error) return { ok: false, message: "Não foi possível cadastrar o fornecedor." };
+  const { data, error } = await supabase.from("services").update({ archived_at: null })
+    .eq("store_id", context.store.id).eq("id", parsed.data).not("archived_at", "is", null).select("id").maybeSingle();
+  if (error) return { ok: false, message: "Não foi possível reativar o serviço." };
+  if (!data) return { ok: false, message: "Serviço não encontrado ou já ativo." };
+  for (const path of ["/configuracoes", "/agenda", "/vendas/nova"]) revalidatePath(path);
+  return { ok: true };
+}
+
+const supplierSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  cnpj: z.string().trim().max(18),
+  phone: z.string().trim().max(100),
+  email: z.union([z.string().trim().email().max(254), z.literal("")]),
+  street: z.string().trim().max(200),
+  number: z.string().trim().max(40),
+  complement: z.string().trim().max(120),
+  district: z.string().trim().max(120),
+  postalCode: z.string().trim().max(20),
+  city: z.string().trim().max(100),
+  state: z.string().trim().max(2),
+  reference: z.string().trim().max(200),
+  notes: z.string().trim().max(500),
+});
+
+function supplierValues(input: z.infer<typeof supplierSchema>) {
+  const cnpj = normalizeCnpj(input.cnpj);
+  if (cnpj && !isValidCnpj(cnpj)) return null;
+  return {
+    name: input.name,
+    cnpj: cnpj || null,
+    phone: input.phone || null,
+    email: input.email || null,
+    address: {
+      street: input.street || null,
+      number: input.number || null,
+      complement: input.complement || null,
+      district: input.district || null,
+      postal_code: input.postalCode || null,
+      city: input.city || null,
+      state: input.state.toUpperCase() || null,
+      reference: input.reference || null,
+    },
+    notes: input.notes || null,
+  };
+}
+
+export async function createSupplier(input: unknown) {
+  const parsed = supplierSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Confira o nome e os contatos do fornecedor." };
+  const values = supplierValues(parsed.data);
+  if (!values) return { ok: false, message: "Informe um CNPJ válido." };
+  const context = await getUserContext();
+  if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("suppliers").insert({ store_id: context.store.id, ...values });
+  if (error) return { ok: false, message: error.code === "23505" ? "Este CNPJ já está cadastrado, inclusive em fornecedores arquivados." : "Não foi possível cadastrar o fornecedor." };
+  for (const path of ["/configuracoes", "/estoque"]) revalidatePath(path);
+  return { ok: true };
+}
+
+export async function updateSupplier(input: unknown) {
+  const parsed = supplierSchema.extend({ id: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Confira os dados do fornecedor." };
+  const values = supplierValues(parsed.data);
+  if (!values) return { ok: false, message: "Informe um CNPJ válido." };
+  const context = await getUserContext();
+  if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("suppliers").update(values).eq("store_id", context.store.id).eq("id", parsed.data.id).select("id").maybeSingle();
+  if (error) return { ok: false, message: error.code === "23505" ? "Este CNPJ já está cadastrado em outro fornecedor." : "Não foi possível atualizar o fornecedor." };
+  if (!data) return { ok: false, message: "Fornecedor não encontrado." };
   for (const path of ["/configuracoes", "/estoque"]) revalidatePath(path);
   return { ok: true };
 }
@@ -202,6 +285,20 @@ export async function archiveSupplier(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("suppliers").update({ archived_at: new Date().toISOString() }).eq("store_id", context.store.id).eq("id", parsed.data).is("archived_at", null);
   if (error) return { ok: false, message: "Não foi possível arquivar o fornecedor." };
+  for (const path of ["/configuracoes", "/estoque"]) revalidatePath(path);
+  return { ok: true };
+}
+
+export async function restoreSupplier(id: string) {
+  const parsed = z.string().uuid().safeParse(id);
+  if (!parsed.success) return { ok: false, message: "Fornecedor inválido." };
+  const context = await getUserContext();
+  if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("suppliers").update({ archived_at: null })
+    .eq("store_id", context.store.id).eq("id", parsed.data).not("archived_at", "is", null).select("id").maybeSingle();
+  if (error) return { ok: false, message: "Não foi possível reativar o fornecedor." };
+  if (!data) return { ok: false, message: "Fornecedor não encontrado ou já ativo." };
   for (const path of ["/configuracoes", "/estoque"]) revalidatePath(path);
   return { ok: true };
 }

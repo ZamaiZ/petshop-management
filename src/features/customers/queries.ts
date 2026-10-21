@@ -9,7 +9,7 @@ export type CustomerRecord = {
   email: string | null;
   notes: string | null;
   created_at: string;
-  pets: { id: string; name: string; species: string; breed: string | null }[];
+  pets: { id: string; name: string; species: string; breed: string | null; birth_date: string | null; weight_kg: number | null; care_notes: string | null; behavior_notes: string | null }[];
   addresses: { id: string; label: string | null; street: string; number: string | null; complement: string | null; district: string | null; city: string; state: string | null; postal_code: string | null; reference: string | null }[];
   recent_sales: { id: string; number: number; total_cents: number; completed_at: string | null; status: string }[];
   last_sale: { number: number; total_cents: number; completed_at: string | null } | null;
@@ -33,7 +33,7 @@ export async function getCustomers(storeId: string) {
   const [petsResult, addressesResult, salesResult, receivablesResult] = await Promise.all([
     supabase
       .from("pets")
-      .select("id, customer_id, name, species, breed")
+      .select("id, customer_id, name, species, breed, birth_date, weight_kg, care_notes, behavior_notes")
       .eq("store_id", storeId)
       .in("customer_id", customerIds)
       .is("archived_at", null)
@@ -69,7 +69,7 @@ export async function getCustomers(storeId: string) {
   const petsByCustomer = new Map<string, CustomerRecord["pets"]>();
   for (const pet of petsResult.data) {
     const rows = petsByCustomer.get(pet.customer_id) ?? [];
-    rows.push({ id: pet.id, name: pet.name, species: pet.species, breed: pet.breed });
+    rows.push({ id: pet.id, name: pet.name, species: pet.species, breed: pet.breed, birth_date: pet.birth_date, weight_kg: pet.weight_kg, care_notes: pet.care_notes, behavior_notes: pet.behavior_notes });
     petsByCustomer.set(pet.customer_id, rows);
   }
 

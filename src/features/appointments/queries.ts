@@ -26,7 +26,7 @@ export async function getAgendaOverview(storeId: string, date: string, timeZone:
   const supabase = await createClient();
   const range = localDayRange(date, timeZone);
   const [appointmentsResult, servicesResult, customersResult] = await Promise.all([
-    supabase.from("appointments").select("id, customer_id, pet_id, service_id, sale_id, starts_at, ends_at, price_cents, status, notes, version").eq("store_id", storeId).gte("starts_at", range.start).lt("starts_at", range.end).order("starts_at", { ascending: true }).limit(500),
+    supabase.from("appointments").select("id, customer_id, pet_id, service_id, service_name_snapshot, sale_id, starts_at, ends_at, price_cents, status, notes, version").eq("store_id", storeId).gte("starts_at", range.start).lt("starts_at", range.end).order("starts_at", { ascending: true }).limit(500),
     supabase.from("services").select("id, name, price_cents, duration_minutes").eq("store_id", storeId).is("archived_at", null).order("name", { ascending: true }),
     supabase.from("customers").select("id, name").eq("store_id", storeId).is("archived_at", null).order("name", { ascending: true }).limit(500),
   ]);
@@ -57,7 +57,7 @@ export async function getAgendaOverview(storeId: string, date: string, timeZone:
       pet: pet?.name ?? "Pet",
       species: pet?.species ?? "",
       breed: pet?.breed ?? null,
-      service: services.get(appointment.service_id) ?? "Serviço arquivado",
+      service: appointment.service_name_snapshot || services.get(appointment.service_id) || "Serviço arquivado",
     };
   });
 
