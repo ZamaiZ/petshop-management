@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { CepLookupField, type CepAddress } from "@/components/ui/cep-lookup-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { removeStoreLogo, saveStoreProfile, uploadStoreLogo } from "../actions";
 
 type AddressField = "postal_code" | "street" | "number" | "complement" | "district" | "city" | "state" | "reference";
@@ -151,7 +152,7 @@ export function SettingsView({ store, logoUrl }: {
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5"><Label htmlFor="store-name">Nome da loja</Label><Input id="store-name" name="name" defaultValue={store.name} required minLength={2} maxLength={120} className="h-10" /></div>
-            <div className="space-y-1.5"><Label htmlFor="store-phone">Telefone</Label><Input id="store-phone" name="phone" defaultValue={store.phone ?? ""} maxLength={200} className="h-10" /></div>
+            <div className="space-y-1.5"><Label htmlFor="store-phone">Telefone</Label><PhoneInput id="store-phone" name="phone" defaultValue={store.phone ?? ""} maxLength={20} className="h-10" /></div>
             <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="store-email">E-mail</Label><Input id="store-email" name="email" type="email" defaultValue={store.email ?? ""} maxLength={254} className="h-10" /></div>
           </div>
           <div>
@@ -162,7 +163,7 @@ export function SettingsView({ store, logoUrl }: {
             <div className="space-y-1.5"><Label htmlFor="store-postal-code">CEP</Label><CepLookupField id="store-postal-code" value={address.postal_code} onValueChange={(value) => changeAddress("postal_code", value)} onAddressFound={applyLookup} /></div>
             <div className="space-y-1.5"><Label htmlFor="store-street">Logradouro</Label><Input id="store-street" value={address.street} onChange={(event) => changeAddress("street", event.currentTarget.value)} maxLength={200} className="h-10" /></div>
             <div className="space-y-1.5"><Label htmlFor="store-number">Número</Label><Input id="store-number" value={address.number} onChange={(event) => changeAddress("number", event.currentTarget.value)} maxLength={40} className="h-10" /></div>
-            <div className="space-y-1.5"><Label htmlFor="store-complement">Complemento</Label><Input id="store-complement" value={address.complement} onChange={(event) => changeAddress("complement", event.currentTarget.value)} maxLength={120} className="h-10" /></div>
+            <div className="space-y-1.5"><Label htmlFor="store-complement">Complemento (opcional)</Label><Input id="store-complement" value={address.complement} onChange={(event) => changeAddress("complement", event.currentTarget.value)} maxLength={120} className="h-10" /></div>
             <div className="space-y-1.5"><Label htmlFor="store-district">Bairro</Label><Input id="store-district" value={address.district} onChange={(event) => changeAddress("district", event.currentTarget.value)} maxLength={120} className="h-10" /></div>
             <div className="space-y-1.5"><Label htmlFor="store-city">Cidade</Label><Input id="store-city" value={address.city} onChange={(event) => changeAddress("city", event.currentTarget.value)} maxLength={100} className="h-10" /></div>
             <div className="space-y-1.5"><Label htmlFor="store-state">UF</Label><Input id="store-state" value={address.state} onChange={(event) => changeAddress("state", event.currentTarget.value.toUpperCase().slice(0, 2))} maxLength={2} className="h-10" /></div>

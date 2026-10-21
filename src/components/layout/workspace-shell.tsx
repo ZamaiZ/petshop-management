@@ -23,6 +23,7 @@ import {
   LuUsersRound,
 } from "react-icons/lu";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -50,7 +51,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { PageTransition } from "@/components/layout/page-transition";
 import { RealtimeProvider } from "@/components/providers/realtime-provider";
 import { saveSidebarPreference, saveThemePreference } from "@/features/settings/actions";
@@ -92,31 +93,47 @@ function isActivePath(pathname: string, href: string) {
 }
 
 function AppSidebar({ store, pathname }: { store: StoreInfo; pathname: string }) {
-  const { state } = useSidebar();
+  const { state, isMobile, openMobile } = useSidebar();
+  const isExpanded = isMobile ? openMobile : state === "expanded";
+  const toggleLabel = isMobile
+    ? (openMobile ? "Fechar menu" : "Abrir menu")
+    : (state === "expanded" ? "Recolher menu" : "Expandir menu");
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
-      <SidebarHeader className="h-[72px] justify-center border-b border-sidebar-border px-3 py-0">
-        <div className="flex min-w-0 items-center gap-3 group-data-[collapsible=icon]:justify-center">
-          <Avatar className="size-8 shrink-0 rounded-lg after:rounded-lg group-data-[collapsible=icon]:hidden">
+    <Sidebar collapsible="icon" className="z-30 border-r border-sidebar-border bg-sidebar">
+      <SidebarHeader className="relative h-[72px] justify-center border-b border-sidebar-border px-3 py-0">
+        <div className="flex min-w-0 items-center gap-3 pr-4 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pr-0">
+          <Avatar className="size-8 shrink-0 rounded-lg after:rounded-lg">
             {store.logo_url ? <AvatarImage src={store.logo_url} alt={`Logo de ${store.name}`} className="rounded-md object-contain" /> : null}
             <AvatarFallback className="rounded-md bg-foreground text-background"><LuPawPrint className="size-4" aria-hidden="true" /></AvatarFallback>
           </Avatar>
           <span className="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-[-0.02em] group-data-[collapsible=icon]:hidden">{store.name}</span>
-          <SidebarTrigger
-            className="ml-auto size-8 shrink-0 rounded-md border border-border bg-background shadow-xs transition-colors hover:bg-muted group-data-[collapsible=icon]:ml-0"
-            aria-label={state === "expanded" ? "Recolher menu" : "Expandir menu"}
-          >
-            <LuChevronRight className={`size-4 transition-transform duration-200 ${state === "expanded" ? "rotate-180" : ""}`} aria-hidden="true" />
-          </SidebarTrigger>
         </div>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <SidebarTrigger
+                className="absolute right-0 inset-y-0 z-30 my-auto size-8 rounded-full border border-sidebar-border bg-sidebar shadow-xs transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                style={{ translate: "50% 0" }}
+                aria-label={toggleLabel}
+                aria-expanded={isExpanded}
+              >
+                <LuChevronRight className={`size-4 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} aria-hidden="true" />
+              </SidebarTrigger>
+            }
+          />
+          <TooltipContent side="right" className="gap-2">
+            <span>{toggleLabel}</span>
+            <Kbd>Ctrl B</Kbd>
+          </TooltipContent>
+        </Tooltip>
       </SidebarHeader>
       <SidebarContent className="px-2 pt-5">
-        {navigationGroups.map((group) => (
+        {navigationGroups.map((group, groupIndex) => (
           <SidebarGroup key={group.label} className="p-0 pb-3">
             <SidebarGroupLabel className="px-3 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground group-data-[collapsible=icon]:sr-only">{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu className="gap-1">
+              <SidebarMenu className="gap-1 group-data-[collapsible=icon]:items-center">
                 {group.items.map(({ href, label, icon: Icon }) => {
                   const active = isActivePath(pathname, href);
                   return (
@@ -125,7 +142,7 @@ function AppSidebar({ store, pathname }: { store: StoreInfo; pathname: string })
                         render={<Link href={href} aria-current={active ? "page" : undefined} />}
                         isActive={active}
                         tooltip={label}
-                        className="h-10 rounded-md px-3 text-[12px] font-medium [&>svg]:size-[17px]"
+                        className="h-10 rounded-md px-3 text-[12px] font-medium text-muted-foreground hover:text-foreground/80 data-active:text-foreground/80 [&>svg]:size-[17px]"
                       >
                         <Icon aria-hidden="true" />
                         <span>{label}</span>
@@ -135,6 +152,12 @@ function AppSidebar({ store, pathname }: { store: StoreInfo; pathname: string })
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
+            {groupIndex < navigationGroups.length - 1 && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-3 bottom-1.5 hidden h-px bg-sidebar-border group-data-[collapsible=icon]:block"
+              />
+            )}
           </SidebarGroup>
         ))}
       </SidebarContent>
@@ -211,7 +234,7 @@ function ShellHeader({
             <DropdownMenuSeparator />
             <ThemeSelector theme={theme} onThemeChange={onThemeChange} />
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onLogout}>
+            <DropdownMenuItem onClick={onLogout} variant="destructive">
               <LuLogOut aria-hidden="true" />
               Sair
             </DropdownMenuItem>

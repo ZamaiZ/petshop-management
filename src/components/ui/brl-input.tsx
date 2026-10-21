@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 
 type NativeInputProps = ComponentProps<typeof Input>;
 
-type BrlInputProps = Omit<NativeInputProps, "type" | "inputMode" | "value" | "defaultValue" | "onChange"> & {
+type BrlInputProps = Omit<NativeInputProps, "type" | "inputMode" | "value" | "defaultValue" | "onChange" | "onValueChange"> & {
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
@@ -58,9 +58,8 @@ export function BrlInput({ value, defaultValue, onValueChange, ...props }: BrlIn
     });
   }
 
-  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const inputValue = event.currentTarget.value;
-    const caret = event.currentTarget.selectionStart ?? inputValue.length;
+  function handleInputValueChange(inputValue: string) {
+    const caret = inputRef.current?.selectionStart ?? inputValue.length;
     const caretDigits = digitsFromValue(inputValue.slice(0, caret)).length;
     update(digitsFromValue(inputValue), caretDigits);
   }
@@ -90,7 +89,7 @@ export function BrlInput({ value, defaultValue, onValueChange, ...props }: BrlIn
     autoComplete="off"
     spellCheck={false}
     value={formatted}
-    onChange={handleChange}
+    onValueChange={handleInputValueChange}
     onKeyDown={handleKeyDown}
   />;
 }

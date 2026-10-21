@@ -16,6 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { CepLookupField, type CepAddress } from "@/components/ui/cep-lookup-field";
+import { ComboboxField } from "@/components/ui/combobox-field";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import {
   Dialog,
@@ -28,16 +30,58 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCivilDate, formatMoney, formatShortDate } from "@/lib/format";
+import { formatBrazilianPhone } from "@/lib/phone";
 import { archiveCustomer, archiveCustomerAddress, archivePet, createCustomer, createCustomerAddress, createPet, updatePet } from "../actions";
 import type { CustomerRecord } from "../queries";
+
+const petSpeciesOptions: { value: string; label: string }[] = [
+  { value: "Cachorro", label: "Cachorro" },
+  { value: "Gato", label: "Gato" },
+  { value: "Roedor", label: "Roedor" },
+  { value: "Ave", label: "Ave" },
+  { value: "Réptil", label: "Réptil" },
+  { value: "Peixe", label: "Peixe" },
+  { value: "Anfíbio", label: "Anfíbio" },
+  { value: "__other__", label: "Outra espécie" },
+];
+
+type CustomerAddressFields = {
+  label: string;
+  street: string;
+  number: string;
+  complement: string;
+  district: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  reference: string;
+};
+
+const emptyCustomerAddress: CustomerAddressFields = {
+  label: "",
+  street: "",
+  number: "",
+  complement: "",
+  district: "",
+  city: "",
+  state: "",
+  postalCode: "",
+  reference: "",
+};
+
+function keepAddressValue(current: string, previous: string | null | undefined) {
+  return !current.trim() || current === previous;
+}
 
 function CustomerFormDialog() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
+  const [phone, setPhone] = useState("");
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -51,6 +95,7 @@ function CustomerFormDialog() {
         return;
       }
       form.reset();
+      setPhone("");
       setOpen(false);
       router.refresh();
     });
@@ -74,7 +119,7 @@ function CustomerFormDialog() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="customer-phone">Telefone</Label>
-              <Input id="customer-phone" name="phone" type="tel" maxLength={40} />
+              <PhoneInput id="customer-phone" name="phone" value={phone} onValueChange={setPhone} maxLength={20} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="customer-email">E-mail</Label>
@@ -100,12 +145,18 @@ function PetForm({ customerId, pet, onSaved }: { customerId: string; pet?: Custo
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
   const [birthDate, setBirthDate] = useState(pet?.birth_date ?? "");
+  const [species, setSpecies] = useState(pet?.species ?? "Cachorro");
+  const [speciesOther, setSpeciesOther] = useState("");
+  const speciesOptions = pet?.species && !petSpeciesOptions.some((option) => option.value === pet.species)
+    ? [...petSpeciesOptions.slice(0, -1), { value: pet.species, label: pet.species }, petSpeciesOptions[petSpeciesOptions.length - 1]]
+    : petSpeciesOptions;
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
     data.set("customerId", customerId);
+    data.set("species", species === "__other__" ? speciesOther.trim() : species);
     if (pet) data.set("id", pet.id);
     setMessage("");
     startTransition(async () => {
@@ -117,6 +168,8 @@ function PetForm({ customerId, pet, onSaved }: { customerId: string; pet?: Custo
       if (!pet) {
         form.reset();
         setBirthDate("");
+        setSpecies("Cachorro");
+        setSpeciesOther("");
       }
       onSaved();
     });
@@ -128,7 +181,8 @@ function PetForm({ customerId, pet, onSaved }: { customerId: string; pet?: Custo
       {pet ? <input type="hidden" name="id" value={pet.id} /> : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5"><Label htmlFor={`pet-name-${customerId}-${pet?.id ?? "new"}`}>Nome</Label><Input id={`pet-name-${customerId}-${pet?.id ?? "new"}`} name="name" defaultValue={pet?.name ?? ""} required maxLength={80} /></div>
-        <div className="space-y-1.5"><Label htmlFor={`pet-species-${customerId}-${pet?.id ?? "new"}`}>Espécie</Label><Input id={`pet-species-${customerId}-${pet?.id ?? "new"}`} name="species" defaultValue={pet?.species ?? ""} required maxLength={40} placeholder="Cão, gato…" /></div>
+        <div className="space-y-1.5"><Label htmlFor={`pet-species-${customerId}-${pet?.id ?? "new"}`}>Espécie</Label><ComboboxField id={`pet-species-${customerId}-${pet?.id ?? "new"}`} value={species} onValueChange={setSpecies} options={speciesOptions} placeholder="Selecione a espécie" className="h-9" /></div>
+        {species === "__other__" ? <div className="space-y-1.5 sm:col-span-2"><Label htmlFor={`pet-species-other-${customerId}-${pet?.id ?? "new"}`}>Qual espécie?</Label><Input id={`pet-species-other-${customerId}-${pet?.id ?? "new"}`} value={speciesOther} onChange={(event) => setSpeciesOther(event.currentTarget.value)} required maxLength={40} /></div> : null}
         <div className="space-y-1.5"><Label htmlFor={`pet-breed-${customerId}-${pet?.id ?? "new"}`}>Raça</Label><Input id={`pet-breed-${customerId}-${pet?.id ?? "new"}`} name="breed" defaultValue={pet?.breed ?? ""} maxLength={80} /></div>
         <div className="space-y-1.5"><Label htmlFor={`pet-birth-${customerId}-${pet?.id ?? "new"}`}>Nascimento</Label><DatePickerField id={`pet-birth-${customerId}-${pet?.id ?? "new"}`} name="birthDate" value={birthDate} onValueChange={setBirthDate} /></div>
         <div className="space-y-1.5"><Label htmlFor={`pet-weight-${customerId}-${pet?.id ?? "new"}`}>Peso (kg)</Label><Input id={`pet-weight-${customerId}-${pet?.id ?? "new"}`} name="weightKg" inputMode="decimal" type="number" min="0.001" max="500" step="0.001" defaultValue={pet?.weight_kg ?? ""} /></div>
@@ -175,34 +229,49 @@ function ArchivePetButton({ customerId, pet, onArchived }: { customerId: string;
 function AddressForm({ customerId, onSaved }: { customerId: string; onSaved: () => void }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
+  const [address, setAddress] = useState<CustomerAddressFields>(emptyCustomerAddress);
+
+  function changeAddress(field: keyof CustomerAddressFields, value: string) {
+    setAddress((current) => ({ ...current, [field]: value }));
+  }
+
+  function applyCepAddress(found: CepAddress, previous: CepAddress | null) {
+    setAddress((current) => ({
+      ...current,
+      street: keepAddressValue(current.street, previous?.street) ? found.street : current.street,
+      district: keepAddressValue(current.district, previous?.district) ? found.district : current.district,
+      city: keepAddressValue(current.city, previous?.city) ? found.city : current.city,
+      state: keepAddressValue(current.state, previous?.state) ? found.state : current.state,
+    }));
+  }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const values = new FormData(form);
     setMessage("");
     startTransition(async () => {
       const result = await createCustomerAddress({
         customerId,
-        label: String(values.get("label") ?? ""),
-        street: String(values.get("street") ?? ""),
-        number: String(values.get("number") ?? ""),
-        complement: String(values.get("complement") ?? ""),
-        district: String(values.get("district") ?? ""),
-        city: String(values.get("city") ?? ""),
-        state: String(values.get("state") ?? ""),
-        postalCode: String(values.get("postalCode") ?? ""),
-        reference: String(values.get("reference") ?? ""),
+        ...address,
       });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
-      form.reset();
+      setAddress(emptyCustomerAddress);
       onSaved();
     });
   }
 
   return <form onSubmit={submit} className="space-y-3 rounded-md border border-border p-3">
     <h4 className="text-[11px] font-semibold">Adicionar endereço</h4>
-    <div className="grid gap-2 sm:grid-cols-2"><div className="space-y-1"><Label htmlFor={`address-label-${customerId}`}>Identificação</Label><Input id={`address-label-${customerId}`} name="label" maxLength={80} placeholder="Casa, trabalho…" /></div><div className="space-y-1"><Label htmlFor={`address-street-${customerId}`}>Rua</Label><Input id={`address-street-${customerId}`} name="street" maxLength={200} required /></div><div className="space-y-1"><Label htmlFor={`address-number-${customerId}`}>Número</Label><Input id={`address-number-${customerId}`} name="number" maxLength={40} /></div><div className="space-y-1"><Label htmlFor={`address-complement-${customerId}`}>Complemento</Label><Input id={`address-complement-${customerId}`} name="complement" maxLength={120} /></div><div className="space-y-1"><Label htmlFor={`address-district-${customerId}`}>Bairro</Label><Input id={`address-district-${customerId}`} name="district" maxLength={120} /></div><div className="space-y-1"><Label htmlFor={`address-city-${customerId}`}>Cidade</Label><Input id={`address-city-${customerId}`} name="city" maxLength={100} required /></div><div className="space-y-1"><Label htmlFor={`address-state-${customerId}`}>Estado</Label><Input id={`address-state-${customerId}`} name="state" maxLength={2} /></div><div className="space-y-1"><Label htmlFor={`address-postal-${customerId}`}>CEP</Label><Input id={`address-postal-${customerId}`} name="postalCode" maxLength={20} /></div><div className="space-y-1 sm:col-span-2"><Label htmlFor={`address-reference-${customerId}`}>Referência</Label><Input id={`address-reference-${customerId}`} name="reference" maxLength={200} /></div></div>
+    <div className="grid gap-2 sm:grid-cols-2">
+      <div className="space-y-1"><Label htmlFor={`address-label-${customerId}`}>Identificação</Label><Input id={`address-label-${customerId}`} value={address.label} onChange={(event) => changeAddress("label", event.currentTarget.value)} maxLength={80} placeholder="Casa, trabalho…" /></div>
+      <div className="space-y-1"><Label htmlFor={`address-postal-${customerId}`}>CEP</Label><CepLookupField id={`address-postal-${customerId}`} value={address.postalCode} onValueChange={(value) => changeAddress("postalCode", value)} onAddressFound={applyCepAddress} /></div>
+      <div className="space-y-1"><Label htmlFor={`address-street-${customerId}`}>Rua</Label><Input id={`address-street-${customerId}`} value={address.street} onChange={(event) => changeAddress("street", event.currentTarget.value)} maxLength={200} required /></div>
+      <div className="space-y-1"><Label htmlFor={`address-number-${customerId}`}>Número</Label><Input id={`address-number-${customerId}`} value={address.number} onChange={(event) => changeAddress("number", event.currentTarget.value)} maxLength={40} /></div>
+      <div className="space-y-1"><Label htmlFor={`address-complement-${customerId}`}>Complemento (opcional)</Label><Input id={`address-complement-${customerId}`} value={address.complement} onChange={(event) => changeAddress("complement", event.currentTarget.value)} maxLength={120} /></div>
+      <div className="space-y-1"><Label htmlFor={`address-district-${customerId}`}>Bairro</Label><Input id={`address-district-${customerId}`} value={address.district} onChange={(event) => changeAddress("district", event.currentTarget.value)} maxLength={120} /></div>
+      <div className="space-y-1"><Label htmlFor={`address-city-${customerId}`}>Cidade</Label><Input id={`address-city-${customerId}`} value={address.city} onChange={(event) => changeAddress("city", event.currentTarget.value)} maxLength={100} required /></div>
+      <div className="space-y-1"><Label htmlFor={`address-state-${customerId}`}>Estado</Label><Input id={`address-state-${customerId}`} value={address.state} onChange={(event) => changeAddress("state", event.currentTarget.value.toUpperCase().slice(0, 2))} maxLength={2} /></div>
+      <div className="space-y-1 sm:col-span-2"><Label htmlFor={`address-reference-${customerId}`}>Referência</Label><Input id={`address-reference-${customerId}`} value={address.reference} onChange={(event) => changeAddress("reference", event.currentTarget.value)} maxLength={200} /></div>
+    </div>
     {message ? <p role="alert" className="text-[10px] text-destructive">{message}</p> : null}
     <div className="flex justify-end"><Button type="submit" size="sm" disabled={pending}>{pending ? "Salvando…" : "Salvar endereço"}</Button></div>
   </form>;
@@ -254,7 +323,7 @@ function CustomerProfile({ customer, onArchive }: { customer: CustomerRecord; on
           <div className="flex items-center gap-2"><span className="grid size-9 place-items-center rounded-lg bg-muted"><LuUserRound className="size-4" /></span><div><DialogTitle className="text-[18px]">{customer.name}</DialogTitle><DialogDescription className="text-[11px]">Cliente desde {formatShortDate(customer.created_at)}</DialogDescription></div></div>
         </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[11px]"><LuPhone className="size-3.5 text-muted-foreground" />{customer.phone || "Sem telefone"}</div>
+          <div className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[11px]"><LuPhone className="size-3.5 text-muted-foreground" />{customer.phone ? formatBrazilianPhone(customer.phone) : "Sem telefone"}</div>
           <div className="flex min-w-0 items-center gap-2 rounded-md border border-border px-3 py-2 text-[11px]"><LuMail className="size-3.5 shrink-0 text-muted-foreground" /><span className="truncate">{customer.email || "Sem e-mail"}</span></div>
           <div className="rounded-md border border-border px-3 py-2 sm:col-span-2"><p className="text-[10px] text-muted-foreground">Saldo em aberto</p><p className="mt-1 text-[14px] font-semibold tabular-nums">{formatMoney(customer.balance_cents)}</p></div>
         </div>
@@ -294,9 +363,9 @@ export function CustomerView({ customers }: { customers: CustomerRecord[] }) {
     },
     {
       id: "phone",
-      accessorFn: (row) => row.phone ?? "",
+      accessorFn: (row) => `${row.phone ?? ""} ${formatBrazilianPhone(row.phone)}`,
       header: "Contato",
-      cell: ({ row }) => <span className="whitespace-nowrap text-muted-foreground">{row.original.phone || "—"}</span>,
+      cell: ({ row }) => <span className="whitespace-nowrap text-muted-foreground">{formatBrazilianPhone(row.original.phone) || "—"}</span>,
     },
     { id: "pets", accessorFn: (row) => row.pets.map((pet) => `${pet.name} ${pet.breed ?? ""}`).join(" "), header: "Pets", cell: ({ row }) => <span className="block max-w-64 truncate">{row.original.pets.map((pet) => `${pet.name}${pet.breed ? ` · ${pet.breed}` : ""}`).join(", ") || <span className="text-muted-foreground">Nenhum pet</span>}</span> },
     { id: "balance", accessorFn: (row) => row.balance_cents, header: "A receber", cell: ({ row }) => row.original.balance_cents > 0 ? <Badge variant="outline" className="rounded-md border-amber-200 bg-amber-50 px-2 text-[10px] font-normal text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{formatMoney(row.original.balance_cents)}</Badge> : <span className="text-muted-foreground">—</span> },

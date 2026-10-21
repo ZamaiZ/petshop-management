@@ -23,6 +23,7 @@ export async function getCustomers(storeId: string) {
     .select("id, name, phone, email, notes, created_at")
     .eq("store_id", storeId)
     .is("archived_at", null)
+    .order("created_at", { ascending: false })
     .order("name", { ascending: true })
     .limit(500);
 

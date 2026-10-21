@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { AuthFeedback, AuthPasswordField, AuthTextField } from "./auth-fields";
+import { AuthThemeToggle } from "./auth-theme-toggle";
 
 export function SignupForm() {
   const router = useRouter();
@@ -53,7 +54,10 @@ export function SignupForm() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-[24px] font-semibold tracking-[-0.04em]">Criar conta</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-[24px] font-semibold tracking-[-0.04em]">Criar conta</h2>
+          <AuthThemeToggle />
+        </div>
         <p className="mt-2 text-[12px] text-muted-foreground">Cadastre seu pet shop para começar.</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-3.5" aria-busy={pending}>
