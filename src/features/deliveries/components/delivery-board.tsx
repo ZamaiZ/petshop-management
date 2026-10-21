@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition, type DragEvent, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { LuArrowLeft, LuCheck, LuMapPin, LuPhone, LuTruck } from "react-icons/lu";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +17,7 @@ import { formatBrazilianPhone, normalizeBrazilianPhone } from "@/lib/phone";
 import { moveDelivery } from "../actions";
 import type { DeliveryOverview, DeliveryRecord } from "../queries";
 import { receiveReceivable } from "@/features/finance/actions";
+import { MutationRegion, runMutationFeedback } from "@/components/feedback/mutation-feedback";
 
 const lanes = [
   { id: "preparing", label: "A preparar", action: "Marcar como pronta" },
@@ -38,7 +38,7 @@ function paymentName(method: string) {
   return labels[method] ?? method;
 }
 
-function ReceiveOnDelivery({ delivery, cashSessionId, onSaved, disabled = false }: { delivery: DeliveryRecord; cashSessionId: string | null; onSaved: () => void; disabled?: boolean }) {
+function ReceiveOnDelivery({ delivery, cashSessionId, disabled = false }: { delivery: DeliveryRecord; cashSessionId: string | null; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const [method, setMethod] = useState<"cash" | "pix" | "debit_card" | "credit_card">("pix");
   const [pending, startTransition] = useTransition();
@@ -50,10 +50,9 @@ function ReceiveOnDelivery({ delivery, cashSessionId, onSaved, disabled = false 
     const form = new FormData(event.currentTarget);
     setMessage("");
     startTransition(async () => {
-      const result = await receiveReceivable({ receivableId: delivery.receivable_id!, amount: String(form.get("amount") ?? ""), method, sessionId: method === "cash" ? cashSessionId : null, tendered: String(form.get("tendered") ?? ""), key });
+      const result = await runMutationFeedback({ scope: "deliveries", action: () => receiveReceivable({ receivableId: delivery.receivable_id!, amount: String(form.get("amount") ?? ""), method, sessionId: method === "cash" ? cashSessionId : null, tendered: String(form.get("tendered") ?? ""), key }), success: { title: "Recebimento registrado", description: "O saldo da venda e o quadro de entregas foram atualizados." }, failureTitle: "Não foi possível receber o valor", unexpectedMessage: "Confira o valor e a forma de pagamento e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
-      onSaved();
     });
   }
 
@@ -64,7 +63,7 @@ function ReceiveOnDelivery({ delivery, cashSessionId, onSaved, disabled = false 
   </>;
 }
 
-function CancelDelivery({ delivery, onSaved, disabled = false }: { delivery: DeliveryRecord; onSaved: () => void; disabled?: boolean }) {
+function CancelDelivery({ delivery, disabled = false }: { delivery: DeliveryRecord; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [message, setMessage] = useState("");
@@ -74,10 +73,9 @@ function CancelDelivery({ delivery, onSaved, disabled = false }: { delivery: Del
     event.preventDefault();
     setMessage("");
     startTransition(async () => {
-      const result = await moveDelivery({ deliveryId: delivery.id, status: "cancelled", position: delivery.position, expectedVersion: delivery.version, reason });
+      const result = await runMutationFeedback({ scope: "deliveries", action: () => moveDelivery({ deliveryId: delivery.id, status: "cancelled", position: delivery.position, expectedVersion: delivery.version, reason }), success: { title: "Entrega cancelada", description: "O quadro foi atualizado." }, failureTitle: "Não foi possível cancelar a entrega", unexpectedMessage: "Confira o motivo e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
-      onSaved();
     });
   }
 
@@ -87,7 +85,7 @@ function CancelDelivery({ delivery, onSaved, disabled = false }: { delivery: Del
   </>;
 }
 
-function DeliveryCard({ delivery, cashSessionId, onMove, onRefresh, timezone, disabled = false }: { delivery: DeliveryRecord; cashSessionId: string | null; onMove: (delivery: DeliveryRecord, status: LaneStatus) => void; onRefresh: () => void; timezone: string; disabled?: boolean }) {
+function DeliveryCard({ delivery, cashSessionId, onMove, timezone, disabled = false }: { delivery: DeliveryRecord; cashSessionId: string | null; onMove: (delivery: DeliveryRecord, status: LaneStatus) => void; timezone: string; disabled?: boolean }) {
   const currentIndex = lanes.findIndex((lane) => lane.id === delivery.status);
   const next = delivery.sale_status === "cancelled" ? undefined : lanes[currentIndex + 1];
   const previous = delivery.sale_status === "cancelled" || delivery.status === "delivered" ? undefined : lanes[currentIndex - 1];
@@ -108,16 +106,15 @@ function DeliveryCard({ delivery, cashSessionId, onMove, onRefresh, timezone, di
     <div className="my-3 h-px bg-border" />
     <div className="flex items-start gap-2 text-[10px] text-muted-foreground"><LuMapPin className="mt-0.5 size-3.5 shrink-0" /><div className="min-w-0 space-y-0.5">{address.map((line, index) => <p key={index} className="truncate">{line}</p>)}</div></div>
     <div className="mt-3 flex items-center justify-between"><span className="text-[11px] font-semibold tabular-nums">{formatMoney(delivery.total_cents)}</span><Badge variant="outline" className={paymentTone}>{paymentLabel}</Badge></div>
-    {delivery.remaining_cents > 0 && delivery.receivable_id ? <div className="mt-2"><ReceiveOnDelivery delivery={delivery} cashSessionId={cashSessionId} onSaved={onRefresh} disabled={disabled} /></div> : null}
+    {delivery.remaining_cents > 0 && delivery.receivable_id ? <div className="mt-2"><ReceiveOnDelivery delivery={delivery} cashSessionId={cashSessionId} disabled={disabled} /></div> : null}
     {next?.action ? <Button variant="outline" className="mt-2 h-8 w-full text-[10px]" disabled={disabled} onClick={() => onMove(delivery, next.id)}><LuCheck className="mr-1.5 size-3.5" />{next.action}</Button> : null}
     {previous ? <Button variant="ghost" className="mt-1 h-7 w-full text-[9px] text-muted-foreground" disabled={disabled} onClick={() => onMove(delivery, previous.id)}><LuArrowLeft className="mr-1.5 size-3" />Voltar para {previous.label.toLocaleLowerCase("pt-BR")}</Button> : null}
-    {delivery.status !== "delivered" && delivery.status !== "cancelled" ? <div className="mt-1 flex justify-end"><CancelDelivery delivery={delivery} onSaved={onRefresh} disabled={disabled} /></div> : null}
+    {delivery.status !== "delivered" && delivery.status !== "cancelled" ? <div className="mt-1 flex justify-end"><CancelDelivery delivery={delivery} disabled={disabled} /></div> : null}
     {delivery.delivered_at ? <p className="mt-2 text-[9px] text-muted-foreground">Entregue em {formatShortDate(delivery.delivered_at, timezone)} · {formatTime(delivery.delivered_at, timezone)}</p> : null}
   </Card>;
 }
 
 export function DeliveryBoard({ overview, timezone }: { overview: DeliveryOverview; timezone: string }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [dragId, setDragId] = useState("");
@@ -145,14 +142,13 @@ export function DeliveryBoard({ overview, timezone }: { overview: DeliveryOvervi
     setPendingMove({ deliveryId: delivery.id, status, expectedVersion: delivery.version });
     startTransition(async () => {
       try {
-        const result = await moveDelivery({ deliveryId: delivery.id, status, position, expectedVersion: delivery.version, reason: "" });
+        const result = await runMutationFeedback({ scope: "deliveries", action: () => moveDelivery({ deliveryId: delivery.id, status, position, expectedVersion: delivery.version, reason: "" }), success: { title: "Etapa da entrega atualizada", description: "O quadro de entregas foi atualizado." }, failureTitle: "Não foi possível atualizar a entrega", unexpectedMessage: "Atualize o quadro e tente novamente." });
         if (!result.ok) {
           setError(result.message ?? "Não foi possível atualizar a entrega.");
           pendingMoveRef.current = false;
           setPendingMove(null);
           return;
         }
-        router.refresh();
       } catch {
         setError("Não foi possível atualizar a entrega. Verifique sua conexão e tente novamente.");
         pendingMoveRef.current = false;
@@ -170,7 +166,7 @@ export function DeliveryBoard({ overview, timezone }: { overview: DeliveryOvervi
     setDragId("");
   }
 
-  return <div className="space-y-5">
+  return <MutationRegion scope="deliveries" label="Atualizando o quadro de entregas e pagamentos…"><div className="space-y-5">
     <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Entregas</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Preparação, saída e entrega dos pedidos.</p></div><ButtonLink href="/vendas?nova=1&entrega=1" className="h-9 gap-2 px-3 text-[11px]"><LuTruck className="size-3.5" /> Nova entrega</ButtonLink></div>
     <div className="rounded-md border border-border bg-card px-3 py-2.5 text-[10px] text-muted-foreground">O andamento da entrega e a situação do pagamento são acompanhados separadamente.</div>
     {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
@@ -181,7 +177,7 @@ export function DeliveryBoard({ overview, timezone }: { overview: DeliveryOvervi
         const deliveries = grouped(lane.id);
         return <section key={lane.id} onDragOver={(event) => { if (!pendingMoveRef.current) event.preventDefault(); }} onDrop={(event) => drop(event, lane.id)} className="min-h-[360px] min-w-0 rounded-[10px] border border-border bg-muted/35 p-3">
           <div className="mb-3 flex items-center justify-between px-0.5 text-[10px] font-semibold"><span>{lane.label}</span><span className="text-muted-foreground">{deliveries.length}</span></div>
-          <div className="space-y-3">{deliveries.map((delivery) => <div key={delivery.id} onDragStart={() => { if (!pendingMoveRef.current) setDragId(delivery.id); }}><DeliveryCard delivery={delivery} cashSessionId={overview.cashSessionId} onMove={move} onRefresh={() => router.refresh()} timezone={timezone} disabled={Boolean(pendingMove)} /></div>)}
+          <div className="space-y-3">{deliveries.map((delivery) => <div key={delivery.id} onDragStart={() => { if (!pendingMoveRef.current) setDragId(delivery.id); }}><DeliveryCard delivery={delivery} cashSessionId={overview.cashSessionId} onMove={move} timezone={timezone} disabled={Boolean(pendingMove)} /></div>)}
             {!deliveries.length ? <div className="grid min-h-[225px] place-items-center rounded-md border border-dashed border-border/70 px-4 text-center text-[10px] text-muted-foreground">Nenhuma entrega aqui.</div> : null}
           </div>
         </section>;
@@ -189,5 +185,5 @@ export function DeliveryBoard({ overview, timezone }: { overview: DeliveryOvervi
     </div>
     </div>
     {overview.deliveries.some((delivery) => delivery.status === "cancelled") ? <Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="border-b border-border px-4 py-3 text-[11px] font-semibold">Entregas canceladas</div>{overview.deliveries.filter((delivery) => delivery.status === "cancelled").map((delivery) => <div key={delivery.id} className="grid gap-1 border-b border-border px-4 py-3 text-[10px] last:border-0 sm:grid-cols-[1fr_1fr_auto]"><span className="font-medium">#{delivery.sale_number} · {delivery.customer}</span><span className="text-muted-foreground">{delivery.cancellation_reason || "Motivo não informado"}</span><span className="tabular-nums">{formatMoney(delivery.total_cents)}</span></div>)}</Card> : null}
-  </div>;
+  </div></MutationRegion>;
 }

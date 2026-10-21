@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { LuWifiOff } from "react-icons/lu";
 import { createClient } from "@/lib/supabase/browser";
+import { hasPendingRouteRevalidation, subscribeToMutationActivity } from "@/components/feedback/mutation-feedback";
 
 const tenantTables = [
   "store_memberships", "categories", "suppliers", "customers", "customer_addresses", "pets", "products", "product_packagings",
@@ -22,18 +23,37 @@ export function RealtimeProvider({ storeId, userId, children }: { storeId: strin
   useEffect(() => {
     const supabase = createClient();
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    let refreshQueuedDuringMutation = false;
     const channel = supabase.channel(`store-updates:${storeId}:${userId}`);
     const scheduleRefresh = () => {
+      if (hasPendingRouteRevalidation()) {
+        refreshQueuedDuringMutation = true;
+        return;
+      }
       if (refreshTimer) clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => router.refresh(), 140);
+      refreshTimer = setTimeout(() => {
+        refreshTimer = undefined;
+        router.refresh();
+      }, 140);
     };
+    const stopMutationSubscription = subscribeToMutationActivity((activity) => {
+      if (activity.pending && activity.routeRevalidationPending && refreshTimer) {
+        clearTimeout(refreshTimer);
+        refreshTimer = undefined;
+        refreshQueuedDuringMutation = true;
+        return;
+      }
+      if (activity.pending || !refreshQueuedDuringMutation) return;
+      const shouldRefresh = activity.refreshAfterIdle;
+      refreshQueuedDuringMutation = false;
+      if (shouldRefresh) scheduleRefresh();
+    });
 
     for (const table of tenantTables) {
       channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `store_id=eq.${storeId}` }, scheduleRefresh);
     }
     channel
       .on("postgres_changes", { event: "*", schema: "public", table: "stores", filter: `id=eq.${storeId}` }, scheduleRefresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "user_preferences", filter: `user_id=eq.${userId}` }, scheduleRefresh)
       .subscribe((status) => {
         if (status === "SUBSCRIBED") setConnection("online");
         else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") setConnection("offline");
@@ -42,12 +62,13 @@ export function RealtimeProvider({ storeId, userId, children }: { storeId: strin
 
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer);
+      stopMutationSubscription();
       void supabase.removeChannel(channel);
     };
   }, [router, storeId, userId]);
 
   return <>
-    {connection === "offline" ? <div role="status" className="fixed right-3 bottom-3 z-50 flex items-center gap-2 rounded-md border border-border bg-background/95 px-3 py-2 text-[10px] text-muted-foreground shadow-sm"><LuWifiOff className="size-3.5" />Sem sincronização ao vivo</div> : null}
+    {connection === "offline" ? <div role="status" className="fixed right-3 bottom-24 z-40 flex items-center gap-2 rounded-md border border-border bg-background/95 px-3 py-2 text-[10px] text-muted-foreground shadow-sm"><LuWifiOff className="size-3.5" />Sem sincronização ao vivo</div> : null}
     {children}
   </>;
 }

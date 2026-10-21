@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { LuArchive, LuClock3, LuPencil, LuPlus, LuRotateCcw, LuSearch } from "react-icons/lu";
 import { archiveService, createService, restoreService, updateService } from "@/features/services/actions";
 import { Button } from "@/components/ui/button";
@@ -12,16 +11,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatMoney, formatMoneyInput } from "@/lib/format";
+import { MutationRegion, useMutationFeedback } from "@/components/feedback/mutation-feedback";
 import type { ServiceRecord } from "../queries";
 
-function ServiceDialog({ service, open, onOpenChange, onSaved }: {
+function ServiceDialog({ service, open, onOpenChange }: {
   service: ServiceRecord | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaved: () => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
+  const runMutation = useMutationFeedback();
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -33,15 +33,20 @@ function ServiceDialog({ service, open, onOpenChange, onSaved }: {
         price: String(form.get("price") ?? ""),
         duration: String(form.get("duration") ?? ""),
       };
-      const result = service
-        ? await updateService({ ...input, id: service.id })
-        : await createService(input);
+      const result = await runMutation({
+        scope: "services",
+        action: () => service ? updateService({ ...input, id: service.id }) : createService(input),
+        success: service
+          ? { title: "Serviço atualizado", description: "A lista e as opções de atendimento foram atualizadas." }
+          : { title: "Serviço cadastrado", description: "Ele já pode ser usado na agenda e nas vendas." },
+        failureTitle: service ? "Não foi possível atualizar o serviço" : "Não foi possível cadastrar o serviço",
+        unexpectedMessage: "Tente novamente. Se o problema continuar, informe a referência exibida no aviso.",
+      });
       if (!result.ok) {
         setMessage(result.message ?? "Não foi possível salvar o serviço.");
         return;
       }
       onOpenChange(false);
-      onSaved();
     });
   }
 
@@ -67,7 +72,7 @@ function ServiceDialog({ service, open, onOpenChange, onSaved }: {
 }
 
 export function ServicesView({ services }: { services: ServiceRecord[] }) {
-  const router = useRouter();
+  const runMutation = useMutationFeedback();
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [target, setTarget] = useState<ServiceRecord | null>(null);
@@ -82,12 +87,19 @@ export function ServicesView({ services }: { services: ServiceRecord[] }) {
   function changeArchive(service: ServiceRecord, restore: boolean) {
     setMessage("");
     startTransition(async () => {
-      const result = restore ? await restoreService(service.id) : await archiveService(service.id);
+      const result = await runMutation({
+        scope: "services",
+        action: () => restore ? restoreService(service.id) : archiveService(service.id),
+        success: restore
+          ? { title: "Serviço reativado", description: "Ele voltou a aparecer nas opções da agenda e das vendas." }
+          : { title: "Serviço arquivado", description: "Ele deixou de aparecer nas opções de novos atendimentos." },
+        failureTitle: restore ? "Não foi possível reativar o serviço" : "Não foi possível arquivar o serviço",
+        unexpectedMessage: "Tente novamente. Se o problema continuar, informe a referência exibida no aviso.",
+      });
       if (!result.ok) {
         setMessage(result.message ?? "Não foi possível atualizar o serviço.");
         return;
       }
-      router.refresh();
     });
   }
 
@@ -98,7 +110,7 @@ export function ServicesView({ services }: { services: ServiceRecord[] }) {
   }
 
   return (
-    <div className="space-y-6">
+    <MutationRegion scope="services" label="Atualizando serviços e opções de atendimento…"><div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div><h1 className="text-2xl font-semibold tracking-[-0.04em]">Serviços</h1><p className="mt-1.5 text-sm text-muted-foreground">Gerencie os serviços usados na agenda e nas vendas.</p></div>
         <Button onClick={() => openDialog(null)} className="h-10"><LuPlus className="size-4" aria-hidden="true" />Novo serviço</Button>
@@ -138,7 +150,7 @@ export function ServicesView({ services }: { services: ServiceRecord[] }) {
           </TabsContent>
         </Tabs>
       </Card>
-      {dialogOpen ? <ServiceDialog key={target ? `service-${target.id}` : "service-new"} service={target} open onOpenChange={setDialogOpen} onSaved={() => router.refresh()} /> : null}
-    </div>
+      {dialogOpen ? <ServiceDialog key={target ? `service-${target.id}` : "service-new"} service={target} open onOpenChange={setDialogOpen} /> : null}
+    </div></MutationRegion>
   );
 }

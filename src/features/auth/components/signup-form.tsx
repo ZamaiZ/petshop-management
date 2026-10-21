@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { AuthFeedback, AuthPasswordField, AuthTextField } from "./auth-fields";
 import { AuthThemeToggle } from "./auth-theme-toggle";
+import { MutationRegion, runMutationFeedback } from "@/components/feedback/mutation-feedback";
 
 export function SignupForm() {
   const router = useRouter();
@@ -25,17 +26,24 @@ export function SignupForm() {
       return;
     }
 
-    const response = await fetch("/api/auth/signup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storeName: formData.get("storeName"),
-        email: formData.get("email"),
-        password: accountPassword,
-        authorizationPassword,
-      }),
-    }).catch(() => null);
-    const result = response ? await response.json().catch(() => null) : null;
+    const result = await runMutationFeedback({ scope: "auth", action: async () => {
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storeName: formData.get("storeName"),
+          email: formData.get("email"),
+          password: accountPassword,
+          authorizationPassword,
+        }),
+      }).catch(() => null);
+      const payload = response ? await response.json().catch(() => null) : null;
+      return { ok: Boolean(response?.ok), message: payload?.message, signInRequired: Boolean(payload?.signInRequired) };
+    }, success: (result) => result.signInRequired
+      ? { title: "Cadastro recebido", description: "Confira seu e-mail para confirmar a conta." }
+      : { title: "Conta criada", description: "Seu pet shop está pronto para começar." },
+    failureTitle: "Não foi possível criar a conta", unexpectedMessage: "Confira os dados e tente novamente." });
+    const response = { ok: result.ok };
 
     if (!response?.ok) {
       setMessage(result?.message ?? "Não foi possível criar a conta agora.");
@@ -43,16 +51,15 @@ export function SignupForm() {
       return;
     }
 
-    if (result?.signInRequired) {
+    if (result.signInRequired) {
       router.replace("/login?created=1");
       return;
     }
     router.replace("/dashboard");
-    router.refresh();
   }
 
   return (
-    <div>
+    <MutationRegion scope="auth" label="Criando sua conta…"><div>
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <h2 className="text-[24px] font-semibold tracking-[-0.04em]">Criar conta</h2>
@@ -74,6 +81,6 @@ export function SignupForm() {
       <p className="mt-5 text-center text-[11px] text-muted-foreground">
         Já tem conta? <Link href="/login" className="font-medium text-foreground hover:underline">Entrar</Link>
       </p>
-    </div>
+    </div></MutationRegion>
   );
 }

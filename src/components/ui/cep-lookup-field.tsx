@@ -49,10 +49,14 @@ export function CepLookupField({
     const debounce = setTimeout(async () => {
       setStatus("loading");
       try {
-        const response = await fetch(`https://viacep.com.br/ws/${digits}/json/`, {
+        const response = await fetch(`/api/cep?cep=${digits}`, {
           headers: { Accept: "application/json" },
           signal: controller.signal,
         });
+        if (response.status === 404) {
+          setStatus("missing");
+          return;
+        }
         if (!response.ok) throw new Error("viacep_unavailable");
         const payload = await response.json() as {
           erro?: boolean;
@@ -107,7 +111,7 @@ export function CepLookupField({
         value={formatCep(digits)}
         onChange={(event) => onValueChange(event.currentTarget.value.replace(/\D/g, "").slice(0, 8))}
         aria-describedby={`${id}-status`}
-        className="h-9"
+        className="h-11"
       />
       <p id={`${id}-status`} aria-live="polite" className={`text-[10px] ${status === "error" || status === "missing" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`}>
         {statusMessage}

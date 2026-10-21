@@ -23,26 +23,18 @@ export const getUserContext = cache(async () => {
 
   if (membershipError || !membership) return null;
 
-  const [storeResult, preferencesResult] = await Promise.all([
-    supabase
-      .from("stores")
-      .select("id, name, phone, email, address, timezone, logo_path")
-      .eq("id", membership.store_id)
-      .is("archived_at", null)
-      .single(),
-    supabase
-      .from("user_preferences")
-      .select("theme, sidebar_collapsed")
-      .eq("user_id", authData.user.id)
-      .maybeSingle(),
-  ]);
+  const storeResult = await supabase
+    .from("stores")
+    .select("id, name, phone, email, address, timezone, logo_path")
+    .eq("id", membership.store_id)
+    .is("archived_at", null)
+    .single();
 
   if (storeResult.error || !storeResult.data) return null;
 
   return {
     user: authData.user,
     store: { ...storeResult.data, timezone: BUSINESS_TIME_ZONE },
-    preferences: preferencesResult.data ?? { theme: "system" as const, sidebar_collapsed: false },
   };
 });
 

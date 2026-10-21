@@ -54,10 +54,10 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { PageTransition } from "@/components/layout/page-transition";
 import { RealtimeProvider } from "@/components/providers/realtime-provider";
-import { saveSidebarPreference, saveThemePreference } from "@/features/settings/actions";
+import { runMutationFeedback } from "@/components/feedback/mutation-feedback";
+import { THEME_COOKIE_MAX_AGE, THEME_COOKIE_NAME, writeBrowserPreferenceCookie, type Theme } from "@/lib/ui-preferences";
 
 type StoreInfo = { id: string; name: string; logo_url: string | null };
-type Theme = "system" | "light" | "dark";
 
 const navigationGroups = [
   { label: "Principal", items: [{ href: "/dashboard", label: "Visão geral", icon: LuHouse }] },
@@ -271,10 +271,10 @@ export function WorkspaceShell({
 
   const applyTheme = useCallback((nextTheme: Theme) => {
     setTheme(nextTheme);
+    writeBrowserPreferenceCookie(THEME_COOKIE_NAME, nextTheme, THEME_COOKIE_MAX_AGE);
     const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     document.documentElement.classList.toggle("dark", nextTheme === "dark" || (nextTheme === "system" && systemDark));
     document.documentElement.dataset.theme = nextTheme;
-    void saveThemePreference(nextTheme);
   }, []);
 
   useEffect(() => {
@@ -291,7 +291,6 @@ export function WorkspaceShell({
 
   const handleSidebarChange = useCallback((open: boolean) => {
     setCollapsed(!open);
-    void saveSidebarPreference(!open);
   }, []);
 
   useEffect(() => {
@@ -307,11 +306,12 @@ export function WorkspaceShell({
   }, [theme, applyTheme]);
 
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    document.documentElement.classList.remove("dark");
-    document.documentElement.dataset.theme = "system";
+    const result = await runMutationFeedback({ scope: "auth", revalidatesCurrentRoute: false, action: async () => {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      return { ok: response.ok, message: response.ok ? undefined : "Não foi possível encerrar a sessão. Tente novamente." };
+    }, success: { title: "Sessão encerrada", description: "Você saiu da sua conta." }, failureTitle: "Não foi possível sair da conta", unexpectedMessage: "Verifique sua conexão e tente novamente." });
+    if (!result.ok) return;
     router.replace("/login");
-    router.refresh();
   }
 
   return (

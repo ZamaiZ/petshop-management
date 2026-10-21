@@ -32,14 +32,6 @@ export type Database = {
         created_at: string;
         updated_at: string;
       }>;
-      user_preferences: Table<{
-        id: string;
-        user_id: string;
-        theme: "system" | "light" | "dark";
-        sidebar_collapsed: boolean;
-        created_at: string;
-        updated_at: string;
-      }>;
       products: Table<{
         id: string;
         store_id: string;

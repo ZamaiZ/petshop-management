@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import {
   LuBanknote,
   LuArrowDown,
@@ -30,12 +29,13 @@ import { closeCash, createExpense, createExpenseCategory, moveCash, payPayable, 
 import type { FinanceOverview, FinancePayable, FinanceReceivable } from "../queries";
 import { CashDenominationFields, cashCountPayload, cashCountTotal, type CashCountMap } from "./cash-denominations";
 import { OpenCashDialog } from "./open-cash-dialog";
+import { MutationRegion, runMutationFeedback } from "@/components/feedback/mutation-feedback";
 
 function moneyInput(cents: number) {
   return formatMoneyInput(cents);
 }
 
-function CashMovementDialog({ sessionId, kind, onSaved }: { sessionId: string; kind: "reinforcement" | "withdrawal"; onSaved: () => void }) {
+function CashMovementDialog({ sessionId, kind }: { sessionId: string; kind: "reinforcement" | "withdrawal" }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -47,10 +47,9 @@ function CashMovementDialog({ sessionId, kind, onSaved }: { sessionId: string; k
     const form = new FormData(event.currentTarget);
     setMessage("");
     startTransition(async () => {
-      const result = await moveCash({ sessionId, kind, amount: String(form.get("amount") ?? ""), reason: String(form.get("reason") ?? ""), key });
+      const result = await runMutationFeedback({ scope: "finance", action: () => moveCash({ sessionId, kind, amount: String(form.get("amount") ?? ""), reason: String(form.get("reason") ?? ""), key }), success: { title: kind === "reinforcement" ? "Reforço registrado" : "Retirada registrada", description: "O saldo e o histórico do caixa foram atualizados." }, failureTitle: "Não foi possível registrar o movimento", unexpectedMessage: "Tente novamente e confira o estado do caixa." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
-      onSaved();
     });
   }
 
@@ -60,7 +59,7 @@ function CashMovementDialog({ sessionId, kind, onSaved }: { sessionId: string; k
   </>;
 }
 
-function CloseCashDialog({ session, onSaved }: { session: NonNullable<FinanceOverview["cashSession"]>; onSaved: () => void }) {
+function CloseCashDialog({ session }: { session: NonNullable<FinanceOverview["cashSession"]> }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -80,10 +79,9 @@ function CloseCashDialog({ session, onSaved }: { session: NonNullable<FinanceOve
       return;
     }
     startTransition(async () => {
-      const result = await closeCash({ sessionId: session.id, counted: moneyInput(countedCents), notes: String(form.get("notes") ?? ""), counts: countByDenomination ? cashCountPayload(counts) : [], key });
+      const result = await runMutationFeedback({ scope: "finance", action: () => closeCash({ sessionId: session.id, counted: moneyInput(countedCents), notes: String(form.get("notes") ?? ""), counts: countByDenomination ? cashCountPayload(counts) : [], key }), success: { title: "Caixa fechado", description: "O resumo financeiro foi atualizado." }, failureTitle: "Não foi possível fechar o caixa", unexpectedMessage: "Tente novamente e confira os valores da conferência." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
-      onSaved();
     });
   }
 
@@ -93,7 +91,7 @@ function CloseCashDialog({ session, onSaved }: { session: NonNullable<FinanceOve
   </>;
 }
 
-function ReceiveReceivableDialog({ receivable, cashSessionId, onSaved }: { receivable: FinanceReceivable; cashSessionId: string | null; onSaved: () => void }) {
+function ReceiveReceivableDialog({ receivable, cashSessionId }: { receivable: FinanceReceivable; cashSessionId: string | null }) {
   const [open, setOpen] = useState(false);
   const [method, setMethod] = useState<"cash" | "pix" | "debit_card" | "credit_card">("pix");
   const [pending, startTransition] = useTransition();
@@ -105,10 +103,9 @@ function ReceiveReceivableDialog({ receivable, cashSessionId, onSaved }: { recei
     const form = new FormData(event.currentTarget);
     setMessage("");
     startTransition(async () => {
-      const result = await receiveReceivable({ receivableId: receivable.id, amount: String(form.get("amount") ?? ""), method, sessionId: method === "cash" ? cashSessionId : null, tendered: String(form.get("tendered") ?? ""), key });
+      const result = await runMutationFeedback({ scope: "finance", action: () => receiveReceivable({ receivableId: receivable.id, amount: String(form.get("amount") ?? ""), method, sessionId: method === "cash" ? cashSessionId : null, tendered: String(form.get("tendered") ?? ""), key }), success: { title: "Recebimento registrado", description: "O saldo e as contas relacionadas foram atualizados." }, failureTitle: "Não foi possível receber o valor", unexpectedMessage: "Confira o valor e a forma de pagamento e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
-      onSaved();
     });
   }
 
@@ -118,7 +115,7 @@ function ReceiveReceivableDialog({ receivable, cashSessionId, onSaved }: { recei
   </>;
 }
 
-function PayPayableDialog({ payable, cashSessionId, onSaved }: { payable: FinancePayable; cashSessionId: string | null; onSaved: () => void }) {
+function PayPayableDialog({ payable, cashSessionId }: { payable: FinancePayable; cashSessionId: string | null }) {
   const [open, setOpen] = useState(false);
   const [method, setMethod] = useState<"cash" | "pix" | "debit_card" | "credit_card" | "transfer">("pix");
   const [pending, startTransition] = useTransition();
@@ -130,10 +127,9 @@ function PayPayableDialog({ payable, cashSessionId, onSaved }: { payable: Financ
     const form = new FormData(event.currentTarget);
     setMessage("");
     startTransition(async () => {
-      const result = await payPayable({ payableId: payable.id, amount: String(form.get("amount") ?? ""), method, sessionId: method === "cash" ? cashSessionId : null, key });
+      const result = await runMutationFeedback({ scope: "finance", action: () => payPayable({ payableId: payable.id, amount: String(form.get("amount") ?? ""), method, sessionId: method === "cash" ? cashSessionId : null, key }), success: { title: "Conta paga", description: "A lista de contas e o caixa foram atualizados." }, failureTitle: "Não foi possível pagar a conta", unexpectedMessage: "Confira o valor e a forma de pagamento e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
-      onSaved();
     });
   }
 
@@ -144,7 +140,6 @@ function PayPayableDialog({ payable, cashSessionId, onSaved }: { payable: Financ
 }
 
 function ExpenseCategoryDialog() {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -152,10 +147,9 @@ function ExpenseCategoryDialog() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     startTransition(async () => {
-      const result = await createExpenseCategory(String(form.get("name") ?? ""));
+      const result = await runMutationFeedback({ scope: "finance", action: () => createExpenseCategory(String(form.get("name") ?? "")), success: { title: "Categoria criada", description: "Ela já está disponível para classificar despesas." }, failureTitle: "Não foi possível criar a categoria", unexpectedMessage: "Confira o nome e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
-      router.refresh();
     });
   }
   return <>
@@ -164,7 +158,7 @@ function ExpenseCategoryDialog() {
   </>;
 }
 
-function ExpenseDialog({ overview, timezone, onSaved }: { overview: FinanceOverview; timezone: string; onSaved: () => void }) {
+function ExpenseDialog({ overview, timezone }: { overview: FinanceOverview; timezone: string }) {
   const today = localDateKey(new Date(), timezone);
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -180,10 +174,9 @@ function ExpenseDialog({ overview, timezone, onSaved }: { overview: FinanceOverv
     const form = new FormData(event.currentTarget);
     setMessage("");
     startTransition(async () => {
-      const result = await createExpense({ description: String(form.get("description") ?? ""), categoryId, amount: String(form.get("amount") ?? ""), dueOn: String(form.get("dueOn") ?? ""), payNow, method, sessionId: payNow && method === "cash" ? overview.cashSession?.id ?? null : null, key });
+      const result = await runMutationFeedback({ scope: "finance", action: () => createExpense({ description: String(form.get("description") ?? ""), categoryId, amount: String(form.get("amount") ?? ""), dueOn: String(form.get("dueOn") ?? ""), payNow, method, sessionId: payNow && method === "cash" ? overview.cashSession?.id ?? null : null, key }), success: { title: "Despesa registrada", description: payNow ? "A despesa e o pagamento foram atualizados." : "A conta a pagar já aparece no financeiro." }, failureTitle: "Não foi possível registrar a despesa", unexpectedMessage: "Confira o valor, vencimento e forma de pagamento e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
-      onSaved();
     });
   }
 
@@ -240,25 +233,24 @@ function FinanceExportDialog({ today }: { today: string }) {
 }
 
 export function FinanceView({ overview, timezone, today }: { overview: FinanceOverview; timezone: string; today: string }) {
-  const router = useRouter();
   const [tab, setTab] = useState("cash");
   const receivableColumns = useMemo<DataTableColumn<FinanceReceivable>[]>(() => [
     { accessorKey: "customer", header: "Cliente", cell: ({ row }) => <div><p className="font-medium">{row.original.customer}</p><p className="mt-1 text-[10px] text-muted-foreground">Venda #{row.original.sale_number}</p></div> },
     { accessorKey: "due_on", header: "Vencimento", cell: ({ row }) => row.original.due_on ? formatShortDate(row.original.due_on) : "—" },
     { accessorKey: "original_cents", header: "Original", cell: ({ row }) => formatMoney(row.original.original_cents) },
     { accessorKey: "remaining_cents", header: "Saldo", cell: ({ row }) => <span className="font-medium tabular-nums">{formatMoney(row.original.remaining_cents)}</span> },
-    { id: "action", header: "", enableSorting: false, cell: ({ row }) => <ReceiveReceivableDialog receivable={row.original} cashSessionId={overview.cashSession?.id ?? null} onSaved={() => router.refresh()} /> },
+    { id: "action", header: "", enableSorting: false, cell: ({ row }) => <ReceiveReceivableDialog receivable={row.original} cashSessionId={overview.cashSession?.id ?? null} /> },
   ], [overview.cashSession?.id, router]);
   const payableColumns = useMemo<DataTableColumn<FinancePayable>[]>(() => [
     { accessorKey: "description", header: "Conta", cell: ({ row }) => <div><p className="font-medium">{row.original.description}</p><p className="mt-1 text-[10px] text-muted-foreground">{[row.original.supplier, row.original.category].filter(Boolean).join(" · ") || "Despesa da loja"}</p></div> },
     { accessorKey: "due_on", header: "Vencimento", cell: ({ row }) => formatShortDate(row.original.due_on) },
     { accessorKey: "original_cents", header: "Original", cell: ({ row }) => formatMoney(row.original.original_cents) },
     { accessorKey: "remaining_cents", header: "Saldo", cell: ({ row }) => <span className="font-medium tabular-nums">{formatMoney(row.original.remaining_cents)}</span> },
-    { id: "action", header: "", enableSorting: false, cell: ({ row }) => <PayPayableDialog payable={row.original} cashSessionId={overview.cashSession?.id ?? null} onSaved={() => router.refresh()} /> },
+    { id: "action", header: "", enableSorting: false, cell: ({ row }) => <PayPayableDialog payable={row.original} cashSessionId={overview.cashSession?.id ?? null} /> },
   ], [overview.cashSession?.id, router]);
   const cashIn = overview.cashMovements.filter((movement) => movement.amount_cents > 0).reduce((sum, movement) => sum + movement.amount_cents, 0);
 
-  return <div className="space-y-5">
+  return <MutationRegion scope="finance" label="Atualizando caixa, saldos e contas…"><div className="space-y-5">
     <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Financeiro</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Clareza para acompanhar o dinheiro da sua loja.</p></div><div className="flex flex-wrap gap-2"><FinanceExportDialog today={today} /></div></div>
     <section className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
       <Card className="gap-0 rounded-[10px] border-border/90 p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="flex items-center justify-between text-[10px] text-muted-foreground">Recebido nas vendas<LuBanknote className="size-4" /></div><p className="mt-4 text-[25px] font-semibold tabular-nums">{formatMoney(overview.receivedTodayCents)}</p><p className="mt-2 text-[10px] text-muted-foreground">Pagamentos recebidos hoje</p></Card>
@@ -271,17 +263,17 @@ export function FinanceView({ overview, timezone, today }: { overview: FinanceOv
       <TabsContent value="cash" className="mt-4 space-y-4">
         {overview.cashSession ? <>
           <section className="grid gap-3 md:grid-cols-3"><Card className="gap-0 rounded-[10px] border-border/90 p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><p className="text-[10px] text-muted-foreground">Fundo de abertura</p><p className="mt-2 text-[23px] font-semibold tabular-nums">{formatMoney(overview.cashSession.opening_cents)}</p></Card><Card className="gap-0 rounded-[10px] border-border/90 p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><p className="text-[10px] text-muted-foreground">Entradas em dinheiro</p><p className="mt-2 text-[23px] font-semibold tabular-nums">{formatMoney(cashIn)}</p></Card><Card className="gap-0 rounded-[10px] border-border/90 p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><p className="text-[10px] text-muted-foreground">Dinheiro esperado em caixa</p><p className="mt-2 text-[23px] font-semibold tabular-nums">{formatMoney(overview.cashSession.expected_cents)}</p></Card></section>
-          <Card className="gap-0 overflow-hidden rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="flex flex-col justify-between gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:px-5"><div><div className="flex items-center gap-2 text-[12px] font-semibold"><span className="size-2 rounded-full bg-emerald-500" />Caixa aberto</div><p className="mt-1 text-[10px] text-muted-foreground">Abertura: {formatShortDate(overview.cashSession.opened_at, timezone)}, {formatTime(overview.cashSession.opened_at, timezone)}</p></div><CloseCashDialog session={overview.cashSession} onSaved={() => router.refresh()} /></div>
+          <Card className="gap-0 overflow-hidden rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="flex flex-col justify-between gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:px-5"><div><div className="flex items-center gap-2 text-[12px] font-semibold"><span className="size-2 rounded-full bg-emerald-500" />Caixa aberto</div><p className="mt-1 text-[10px] text-muted-foreground">Abertura: {formatShortDate(overview.cashSession.opened_at, timezone)}, {formatTime(overview.cashSession.opened_at, timezone)}</p></div><CloseCashDialog session={overview.cashSession} /></div>
             <div className="space-y-0 px-4 py-3 sm:px-5"><div className="flex items-center justify-between border-b border-border py-3 text-[11px]"><span className="text-muted-foreground">Fundo inicial para troco</span><span className="tabular-nums">{formatMoney(overview.cashSession.opening_cents)}</span></div>{overview.cashMovements.map((movement) => <div key={movement.id} className="flex items-center justify-between gap-4 border-b border-border py-3 text-[11px]"><span className="min-w-0"><span className="block truncate font-medium">{movementLabels[movement.kind] ?? movement.kind}</span><span className="mt-1 block truncate text-[10px] text-muted-foreground">{movement.reason} · {formatTime(movement.occurred_at, timezone)}</span></span><span className={movement.amount_cents < 0 ? "shrink-0 tabular-nums text-destructive" : "shrink-0 tabular-nums"}>{formatMoney(movement.amount_cents)}</span></div>)}<div className="flex items-center justify-between py-3 text-[11px] font-semibold"><span>Dinheiro esperado</span><span className="tabular-nums">{formatMoney(overview.cashSession.expected_cents)}</span></div></div>
-            <div className="flex flex-wrap gap-2 border-t border-border px-4 py-3 sm:px-5"><CashMovementDialog sessionId={overview.cashSession.id} kind="reinforcement" onSaved={() => router.refresh()} /><CashMovementDialog sessionId={overview.cashSession.id} kind="withdrawal" onSaved={() => router.refresh()} /></div>
+            <div className="flex flex-wrap gap-2 border-t border-border px-4 py-3 sm:px-5"><CashMovementDialog sessionId={overview.cashSession.id} kind="reinforcement" /><CashMovementDialog sessionId={overview.cashSession.id} kind="withdrawal" /></div>
           </Card>
         </> : <Card className="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-[10px] border-border/90 p-6 text-center shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground"><LuWallet className="size-4" /></span><div><h2 className="text-[13px] font-semibold">Caixa fechado</h2><p className="mt-1 text-[11px] text-muted-foreground">Abra uma sessão para registrar pagamentos e movimentos em dinheiro.</p></div><OpenCashDialog /></Card>}
         {overview.closedSessions.length ? <Card className="gap-0 overflow-hidden rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="border-b border-border px-4 py-3 text-[11px] font-semibold sm:px-5">Histórico de fechamentos</div>{overview.closedSessions.map((session) => <div key={session.id} className="grid gap-2 border-b border-border px-4 py-3 text-[10px] last:border-0 sm:grid-cols-[1.2fr_1fr_1fr_1fr] sm:px-5"><span>{formatShortDate(session.closed_at, timezone)} · {formatTime(session.closed_at, timezone)}</span><span className="text-muted-foreground">Esperado {formatMoney(session.expected_cents)}</span><span className="text-muted-foreground">Contado {formatMoney(session.counted_cents)}</span><span className={session.difference_cents < 0 ? "font-medium text-destructive" : "font-medium"}>Diferença {formatMoney(session.difference_cents)}</span></div>)}</Card> : null}
       </TabsContent>
       <TabsContent value="receivables" className="mt-4"><Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><DataTable columns={receivableColumns} data={overview.receivables} searchPlaceholder="Buscar por cliente ou venda…" emptyMessage="Nenhum saldo a receber." toolbarActions={<span className="px-2 text-[10px] text-muted-foreground">{overview.receivables.length} contas abertas</span>} /></Card></TabsContent>
-      <TabsContent value="payables" className="mt-4 space-y-3"><div className="flex flex-wrap justify-end gap-2"><ExpenseCategoryDialog /><ExpenseDialog overview={overview} timezone={timezone} onSaved={() => router.refresh()} /></div><Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><DataTable columns={payableColumns} data={overview.payables} searchPlaceholder="Buscar por descrição, fornecedor ou categoria…" emptyMessage="Nenhuma conta a pagar." toolbarActions={<span className="px-2 text-[10px] text-muted-foreground">{overview.payables.length} contas abertas</span>} /></Card></TabsContent>
+      <TabsContent value="payables" className="mt-4 space-y-3"><div className="flex flex-wrap justify-end gap-2"><ExpenseCategoryDialog /><ExpenseDialog overview={overview} timezone={timezone} /></div><Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><DataTable columns={payableColumns} data={overview.payables} searchPlaceholder="Buscar por descrição, fornecedor ou categoria…" emptyMessage="Nenhuma conta a pagar." toolbarActions={<span className="px-2 text-[10px] text-muted-foreground">{overview.payables.length} contas abertas</span>} /></Card></TabsContent>
     </Tabs>
-  </div>;
+  </div></MutationRegion>;
 }
 
 export function FinanceLoadError({ message }: { message: string }) {

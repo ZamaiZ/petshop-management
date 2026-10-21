@@ -317,7 +317,10 @@ export async function startInventoryCount(notes = "") {
     .eq("store_id", context.store.id)
     .eq("count_id", countId)
     .order("product_id", { ascending: true });
-  if (itemsError) return { ok: false as const, message: "A contagem foi iniciada, mas não foi possível carregar seus itens." };
+  if (itemsError) {
+    revalidatePath("/estoque");
+    return { ok: false as const, committed: true as const, message: "A contagem foi iniciada, mas não foi possível carregar seus itens. Atualize a tela antes de tentar novamente." };
+  }
 
   const productIds = [...new Set(items.map((item) => item.product_id))];
   const lotIds = [...new Set(items.map((item) => item.lot_id).filter((id): id is string => Boolean(id)))];
@@ -325,7 +328,10 @@ export async function startInventoryCount(notes = "") {
     supabase.from("products").select("id, name, unit").eq("store_id", context.store.id).in("id", productIds),
     lotIds.length ? supabase.from("inventory_lots").select("id, code").eq("store_id", context.store.id).in("id", lotIds) : Promise.resolve({ data: [], error: null }),
   ]);
-  if (productsResult.error || lotsResult.error) return { ok: false as const, message: "A contagem foi iniciada, mas não foi possível carregar os itens." };
+  if (productsResult.error || lotsResult.error) {
+    revalidatePath("/estoque");
+    return { ok: false as const, committed: true as const, message: "A contagem foi iniciada, mas não foi possível carregar os itens. Atualize a tela antes de tentar novamente." };
+  }
   const products = new Map(productsResult.data.map((product) => [product.id, product]));
   const lots = new Map(lotsResult.data.map((lot) => [lot.id, lot.code]));
   return {

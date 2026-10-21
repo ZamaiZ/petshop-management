@@ -1,48 +1,11 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getUserContext } from "@/lib/auth/context";
 import { BUSINESS_TIME_ZONE } from "@/lib/business-rules";
 import { normalizeBrazilianPhone } from "@/lib/phone";
 import { createClient } from "@/lib/supabase/server";
-
-const themeSchema = z.enum(["system", "light", "dark"]);
-
-export async function saveThemePreference(value: string) {
-  const parsed = themeSchema.safeParse(value);
-  if (!parsed.success) return { ok: false };
-
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) return { ok: false };
-
-  const { error } = await supabase
-    .from("user_preferences")
-    .update({ theme: parsed.data })
-    .eq("user_id", data.user.id);
-
-  if (error) return { ok: false };
-  const cookieStore = await cookies();
-  cookieStore.set("petshop-theme", parsed.data, { path: "/", sameSite: "lax", maxAge: 60 * 60 * 24 * 365 });
-  return { ok: true };
-}
-
-export async function saveSidebarPreference(collapsed: boolean) {
-  if (typeof collapsed !== "boolean") return { ok: false };
-
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) return { ok: false };
-
-  const { error } = await supabase
-    .from("user_preferences")
-    .update({ sidebar_collapsed: collapsed })
-    .eq("user_id", data.user.id);
-
-  return { ok: !error };
-}
 
 const optionalPhone = z.string().trim().max(40)
   .transform(normalizeBrazilianPhone)
@@ -157,6 +120,7 @@ export async function uploadStoreLogo(formData: FormData) {
     return { ok: false, message: "A imagem foi enviada, mas não foi possível associá-la à loja." };
   }
   if (context.store.logo_path) await supabase.storage.from("store-assets").remove([context.store.logo_path]);
+  revalidatePath("/configuracoes");
   revalidatePath("/dashboard");
   return { ok: true };
 }
@@ -168,6 +132,7 @@ export async function removeStoreLogo() {
   const { error } = await supabase.from("stores").update({ logo_path: null }).eq("id", context.store.id);
   if (error) return { ok: false, message: "Não foi possível remover a logo." };
   if (context.store.logo_path) await supabase.storage.from("store-assets").remove([context.store.logo_path]);
+  revalidatePath("/configuracoes");
   revalidatePath("/dashboard");
   return { ok: true };
 }

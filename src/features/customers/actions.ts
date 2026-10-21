@@ -181,7 +181,7 @@ export async function createCustomerAddress(input: unknown) {
   const supabase = await createClient();
   const { data: customer } = await supabase.from("customers").select("id").eq("store_id", context.store.id).eq("id", parsed.data.customerId).is("archived_at", null).maybeSingle();
   if (!customer) return { ok: false, message: "Cliente não encontrado." };
-  const { error } = await supabase.from("customer_addresses").insert({
+  const { data: address, error } = await supabase.from("customer_addresses").insert({
     store_id: context.store.id,
     customer_id: customer.id,
     label: parsed.data.label || null,
@@ -193,11 +193,11 @@ export async function createCustomerAddress(input: unknown) {
     state: parsed.data.state || null,
     postal_code: parsed.data.postalCode || null,
     reference: parsed.data.reference || null,
-  });
-  if (error) return { ok: false, message: "Não foi possível salvar o endereço." };
+  }).select("id, customer_id, label, street, number, complement, district, city, state, postal_code, reference").single();
+  if (error || !address) return { ok: false, message: "Não foi possível salvar o endereço." };
   revalidatePath("/clientes");
   revalidatePath("/vendas");
-  return { ok: true };
+  return { ok: true, address };
 }
 
 export async function archiveCustomerAddress(customerId: string, addressId: string) {

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { AuthFeedback, AuthPasswordField, AuthTextField } from "./auth-fields";
 import { AuthThemeToggle } from "./auth-theme-toggle";
+import { MutationRegion, runMutationFeedback } from "@/components/feedback/mutation-feedback";
 
 export function LoginForm() {
   const router = useRouter();
@@ -17,12 +18,16 @@ export function LoginForm() {
     setPending(true);
     setMessage("");
     const formData = new FormData(event.currentTarget);
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: formData.get("email"), password: formData.get("password") }),
-    }).catch(() => null);
-    const result = response ? await response.json().catch(() => null) : null;
+    const result = await runMutationFeedback({ scope: "auth", action: async () => {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: formData.get("email"), password: formData.get("password") }),
+      }).catch(() => null);
+      const payload = response ? await response.json().catch(() => null) : null;
+      return { ok: Boolean(response?.ok), message: payload?.message };
+    }, success: { title: "Acesso realizado", description: "Bem-vindo de volta." }, failureTitle: "Não foi possível entrar", unexpectedMessage: "Confira sua conexão e tente novamente." });
+    const response = { ok: result.ok };
 
     if (!response?.ok) {
       setMessage(result?.message ?? "Não foi possível entrar agora. Tente novamente.");
@@ -31,11 +36,10 @@ export function LoginForm() {
     }
 
     router.replace("/dashboard");
-    router.refresh();
   }
 
   return (
-    <div>
+    <MutationRegion scope="auth" label="Validando seu acesso…"><div>
       <div className="mb-7">
         <div className="flex items-center justify-between">
           <h2 className="text-[24px] font-semibold tracking-[-0.04em]">Entrar</h2>
@@ -64,6 +68,6 @@ export function LoginForm() {
           A conexão com o Supabase precisa ser configurada no ambiente antes do primeiro acesso.
         </p>
       )}
-    </div>
+    </div></MutationRegion>
   );
 }

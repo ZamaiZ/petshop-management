@@ -27,6 +27,7 @@ import { formatMoney, formatTime } from "@/lib/format";
 import { OpenCashDialog } from "@/features/finance/components/open-cash-dialog";
 import type { DashboardOverview } from "../schema";
 import { SalesChart } from "./sales-chart";
+import { MutationRegion } from "@/components/feedback/mutation-feedback";
 
 const metrics = [
   { key: "sales", label: "Vendas de hoje", icon: LuShoppingBag, detail: (data: DashboardOverview) => `${data.today_sales_count} ${data.today_sales_count === 1 ? "venda realizada" : "vendas realizadas"}` },
@@ -63,7 +64,7 @@ export function DashboardView({ data, timezone }: { data: DashboardOverview; tim
   const today = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", year: "numeric", timeZone: timezone }).format(new Date());
 
   return (
-    <div className="space-y-5">
+    <MutationRegion scope="finance" label="Atualizando o caixa e o resumo financeiro…"><div className="space-y-5">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-[24px] font-semibold tracking-[-0.04em]">Visão geral</h1>
@@ -202,6 +203,6 @@ export function DashboardView({ data, timezone }: { data: DashboardOverview; tim
           </Table>
         </div>
       </Card>
-    </div>
+    </div></MutationRegion>
   );
 }

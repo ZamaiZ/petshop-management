@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import {
   LuBoxes,
   LuCircleAlert,
@@ -39,12 +38,12 @@ import { quantityPrecision } from "@/lib/business-rules";
 import { parseMoneyToCents } from "@/lib/inputs";
 import { adjustStock, archiveCategory, archiveProduct, completeInventoryCount, convertToBulk, createCategory, createProduct, deleteProductPackaging, receiveGoods, restoreCategory, saveProductPackaging, startInventoryCount, updateCategory, updateProduct } from "../actions";
 import type { InventoryMovement, InventoryOverview, InventoryProduct } from "../queries";
+import { MutationRegion, runMutationFeedback } from "@/components/feedback/mutation-feedback";
 
 type ReceiptLine = { productId: string; packages: string; conversionFactor: string; totalCost: string; lotCode: string; expiresOn: string };
 type CountLine = { itemId: string; productId: string; product: string; unit: string; precision: number; lotId: string | null; lotCode: string | null; expected: number; counted: number; balanceVersion: number };
 
 function ProductDialog({ categories }: { categories: InventoryOverview["categories"] }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -57,7 +56,7 @@ function ProductDialog({ categories }: { categories: InventoryOverview["categori
     const form = new FormData(event.currentTarget);
     setMessage("");
     startTransition(async () => {
-      const result = await createProduct({
+      const result = await runMutationFeedback({ scope: "inventory", action: () => createProduct({
         name: form.get("name"),
         brand: form.get("brand"),
         description: form.get("description"),
@@ -69,13 +68,12 @@ function ProductDialog({ categories }: { categories: InventoryOverview["categori
         trackLots,
         salePrice: form.get("salePrice"),
         averageCost: form.get("averageCost"),
-      });
+      }), success: { title: "Produto cadastrado", description: "O catálogo e o estoque foram atualizados." }, failureTitle: "Não foi possível cadastrar o produto", unexpectedMessage: "Confira os dados e tente novamente." });
       if (!result.ok) {
         setMessage(result.message ?? "Não foi possível concluir a operação.");
         return;
       }
       setOpen(false);
-      router.refresh();
     });
   }
 
@@ -112,7 +110,6 @@ function ProductDialog({ categories }: { categories: InventoryOverview["categori
 }
 
 function CategoryDialog({ categories }: { categories: InventoryOverview["categories"] }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -125,21 +122,19 @@ function CategoryDialog({ categories }: { categories: InventoryOverview["categor
     setMessage("");
     startTransition(async () => {
       const name = String(data.get("name") ?? "");
-      const result = editing ? await updateCategory({ id: editing.id, name }) : await createCategory(name);
+      const result = await runMutationFeedback({ scope: "inventory", action: () => editing ? updateCategory({ id: editing.id, name }) : createCategory(name), success: { title: editing ? "Categoria atualizada" : "Categoria criada", description: "As categorias do estoque foram atualizadas." }, failureTitle: "Não foi possível salvar a categoria", unexpectedMessage: "Confira o nome e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setEditing(null);
       form.reset();
-      router.refresh();
     });
   }
 
   function changeCategory(category: InventoryOverview["categories"][number], action: "archive" | "restore") {
     setMessage("");
     startTransition(async () => {
-      const result = action === "archive" ? await archiveCategory(category.id) : await restoreCategory(category.id);
+      const result = await runMutationFeedback({ scope: "inventory", action: () => action === "archive" ? archiveCategory(category.id) : restoreCategory(category.id), success: { title: action === "archive" ? "Categoria arquivada" : "Categoria reativada", description: "As categorias do estoque foram atualizadas." }, failureTitle: "Não foi possível atualizar a categoria", unexpectedMessage: "Atualize a tela e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível atualizar a categoria."); return; }
       if (editing?.id === category.id) setEditing(null);
-      router.refresh();
     });
   }
 
@@ -153,7 +148,7 @@ function CategoryDialog({ categories }: { categories: InventoryOverview["categor
   </>;
 }
 
-function PackagingDialog({ product, onSaved }: { product: InventoryProduct; onSaved: () => void }) {
+function PackagingDialog({ product }: { product: InventoryProduct }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [removePending, startRemoveTransition] = useTransition();
@@ -171,27 +166,25 @@ function PackagingDialog({ product, onSaved }: { product: InventoryProduct; onSa
     const form = new FormData(event.currentTarget);
     setMessage("");
     startTransition(async () => {
-      const result = await saveProductPackaging({
+      const result = await runMutationFeedback({ scope: "inventory", action: () => saveProductPackaging({
         packagingId: editing?.id ?? null,
         productId: product.id,
         label: String(form.get("label") ?? ""),
         barcode: String(form.get("barcode") ?? ""),
         baseQuantity: String(form.get("baseQuantity") ?? ""),
-      });
+      }), success: { title: editing ? "Embalagem atualizada" : "Embalagem cadastrada", description: "As opções de embalagem do produto foram atualizadas." }, failureTitle: "Não foi possível salvar a embalagem", unexpectedMessage: "Confira os dados da embalagem e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       edit(null);
-      onSaved();
     });
   }
 
   function removePackaging() {
     if (!removeTarget) return;
     startRemoveTransition(async () => {
-      const result = await deleteProductPackaging(product.id, removeTarget.id);
+      const result = await runMutationFeedback({ scope: "inventory", action: () => deleteProductPackaging(product.id, removeTarget.id), success: { title: "Embalagem removida", description: "As opções do produto foram atualizadas." }, failureTitle: "Não foi possível remover a embalagem", unexpectedMessage: "Atualize o produto e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); setRemoveTarget(null); return; }
       setRemoveTarget(null);
       edit(null);
-      onSaved();
     });
   }
 
@@ -215,7 +208,7 @@ function PackagingDialog({ product, onSaved }: { product: InventoryProduct; onSa
   </>;
 }
 
-function EditProductDialog({ product, categories, onSaved }: { product: InventoryProduct; categories: InventoryOverview["categories"]; onSaved: () => void }) {
+function EditProductDialog({ product, categories }: { product: InventoryProduct; categories: InventoryOverview["categories"] }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -232,7 +225,7 @@ function EditProductDialog({ product, categories, onSaved }: { product: Inventor
     const form = new FormData(event.currentTarget);
     setMessage("");
     startTransition(async () => {
-      const result = await updateProduct({
+      const result = await runMutationFeedback({ scope: "inventory", action: () => updateProduct({
         id: product.id,
         name: form.get("name"),
         description: form.get("description"),
@@ -242,13 +235,12 @@ function EditProductDialog({ product, categories, onSaved }: { product: Inventor
         categoryId: categoryId === "__none" ? "" : categoryId,
         salePrice: form.get("salePrice"),
         minimumStock: form.get("minimumStock"),
-      });
+      }), success: { title: "Produto atualizado", description: "O catálogo e os dados do estoque foram atualizados." }, failureTitle: "Não foi possível atualizar o produto", unexpectedMessage: "Confira os dados do produto e tente novamente." });
       if (!result.ok) {
         setMessage(result.message ?? "Não foi possível concluir a operação.");
         return;
       }
       setOpen(false);
-      onSaved();
     });
   }
 
@@ -276,7 +268,7 @@ function EditProductDialog({ product, categories, onSaved }: { product: Inventor
   </>;
 }
 
-function ArchiveProductButton({ product, onArchived }: { product: InventoryProduct; onArchived: () => void }) {
+function ArchiveProductButton({ product }: { product: InventoryProduct }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -285,13 +277,12 @@ function ArchiveProductButton({ product, onArchived }: { product: InventoryProdu
   function archive() {
     setMessage("");
     startTransition(async () => {
-      const result = await archiveProduct(product.id);
+      const result = await runMutationFeedback({ scope: "inventory", action: () => archiveProduct(product.id), success: { title: "Produto arquivado", description: "Ele deixou de aparecer no catálogo ativo." }, failureTitle: "Não foi possível arquivar o produto", unexpectedMessage: "Atualize o estoque e tente novamente." });
       if (!result.ok) {
         setMessage(result.message ?? "Não foi possível concluir a operação.");
         return;
       }
       setOpen(false);
-      onArchived();
     });
   }
 
@@ -307,7 +298,7 @@ function ArchiveProductButton({ product, onArchived }: { product: InventoryProdu
   </>;
 }
 
-function AdjustmentDialog({ product, onSaved }: { product: InventoryProduct; onSaved: () => void }) {
+function AdjustmentDialog({ product }: { product: InventoryProduct }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -319,10 +310,9 @@ function AdjustmentDialog({ product, onSaved }: { product: InventoryProduct; onS
     const form = new FormData(event.currentTarget);
     setMessage("");
     startTransition(async () => {
-      const result = await adjustStock({ productId: product.id, counted: String(form.get("counted") ?? ""), reason: String(form.get("reason") ?? ""), lotId: lotId || null, key: operationKey });
+      const result = await runMutationFeedback({ scope: "inventory", action: () => adjustStock({ productId: product.id, counted: String(form.get("counted") ?? ""), reason: String(form.get("reason") ?? ""), lotId: lotId || null, key: operationKey }), success: { title: "Estoque ajustado", description: "O saldo e o histórico de movimentações foram atualizados." }, failureTitle: "Não foi possível ajustar o estoque", unexpectedMessage: "Confira a quantidade, o lote e o motivo do ajuste." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
-      onSaved();
     });
   }
 
@@ -341,7 +331,7 @@ function AdjustmentDialog({ product, onSaved }: { product: InventoryProduct; onS
   </>;
 }
 
-function ReceiptDialog({ overview, onSaved }: { overview: InventoryOverview; onSaved: () => void }) {
+function ReceiptDialog({ overview }: { overview: InventoryOverview }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -380,7 +370,7 @@ function ReceiptDialog({ overview, onSaved }: { overview: InventoryOverview; onS
     }
     setMessage("");
     startTransition(async () => {
-      const result = await receiveGoods({
+      const result = await runMutationFeedback({ scope: "inventory", action: () => receiveGoods({
         key: operationKey,
         supplierId,
         dueOn,
@@ -388,10 +378,9 @@ function ReceiptDialog({ overview, onSaved }: { overview: InventoryOverview; onS
         method,
         sessionId: method === "cash" && payNow ? overview.openCashSession : null,
         items: converted.map((item, index) => ({ ...item, lotCode: items[index].lotCode, expiresOn: items[index].expiresOn })),
-      });
+      }), success: { title: "Recebimento registrado", description: "Estoque, lotes e contas a pagar foram atualizados." }, failureTitle: "Não foi possível receber a mercadoria", unexpectedMessage: "Confira os dados do recebimento e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
-      onSaved();
     });
   }
 
@@ -430,7 +419,7 @@ function ReceiptDialog({ overview, onSaved }: { overview: InventoryOverview; onS
   </>;
 }
 
-function BulkConversionDialog({ products, onSaved }: { products: InventoryProduct[]; onSaved: () => void }) {
+function BulkConversionDialog({ products }: { products: InventoryProduct[] }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -460,10 +449,9 @@ function BulkConversionDialog({ products, onSaved }: { products: InventoryProduc
     const form = new FormData(event.currentTarget);
     setMessage("");
     startTransition(async () => {
-      const result = await convertToBulk({ sourceProductId, targetProductId, sourceQuantity, targetPerSource, reason: String(form.get("reason") ?? ""), key });
+      const result = await runMutationFeedback({ scope: "inventory", action: () => convertToBulk({ sourceProductId, targetProductId, sourceQuantity, targetPerSource, reason: String(form.get("reason") ?? ""), key }), success: { title: "Conversão registrada", description: "Os saldos dos dois produtos foram atualizados." }, failureTitle: "Não foi possível converter o estoque", unexpectedMessage: "Confira os produtos e as quantidades e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
-      onSaved();
     });
   }
 
@@ -483,7 +471,7 @@ function BulkConversionDialog({ products, onSaved }: { products: InventoryProduc
   </>;
 }
 
-function CountDialog({ onSaved }: { onSaved: () => void }) {
+function CountDialog() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -495,7 +483,7 @@ function CountDialog({ onSaved }: { onSaved: () => void }) {
   async function begin() {
     setLoading(true);
     setMessage("");
-    const result = await startInventoryCount();
+    const result = await runMutationFeedback({ scope: "inventory", revalidatesCurrentRoute: (result) => result.ok || ("committed" in result && result.committed === true), action: () => startInventoryCount(), success: { title: "Contagem iniciada", description: "A fotografia atual do estoque está pronta para conferência." }, failureTitle: (result) => "committed" in result && result.committed === true ? "Contagem iniciada, mas os itens não carregaram" : "Não foi possível iniciar a contagem", unexpectedMessage: "Atualize o estoque e tente novamente." });
     if (!result.ok) setMessage(result.message ?? "Não foi possível concluir a operação.");
     else { setCountId(result.countId); setOperationKey(crypto.randomUUID()); setLines(result.lines); }
     setLoading(false);
@@ -511,12 +499,11 @@ function CountDialog({ onSaved }: { onSaved: () => void }) {
     if (!countId) return;
     setMessage("");
     startTransition(async () => {
-      const result = await completeInventoryCount(countId, lines.map((line) => ({ itemId: line.itemId, counted: line.counted })), operationKey);
+      const result = await runMutationFeedback({ scope: "inventory", action: () => completeInventoryCount(countId, lines.map((line) => ({ itemId: line.itemId, counted: line.counted })), operationKey), success: { title: "Contagem aplicada", description: "Os saldos e as movimentações foram atualizados." }, failureTitle: "Não foi possível aplicar a contagem", unexpectedMessage: "Confira as quantidades e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
       setCountId("");
       setLines([]);
-      onSaved();
     });
   }
 
@@ -535,7 +522,6 @@ function CountDialog({ onSaved }: { onSaved: () => void }) {
 const movementKinds: Record<string, string> = { sale: "Venda", receipt: "Recebimento", correction: "Ajuste", count: "Contagem", return: "Devolução", bulk_out: "Saída para granel", bulk_in: "Entrada do granel", conversion: "Conversão" };
 
 export function InventoryView({ overview }: { overview: InventoryOverview }) {
-  const router = useRouter();
   const [tab, setTab] = useState("products");
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const productColumns = useMemo<DataTableColumn<InventoryProduct>[]>(() => [
@@ -544,8 +530,8 @@ export function InventoryView({ overview }: { overview: InventoryOverview }) {
     { accessorKey: "sale_price_cents", header: "Preço de venda", cell: ({ row }) => <span className="whitespace-nowrap tabular-nums">{formatMoney(row.original.sale_price_cents)} / {row.original.unit}</span> },
     { accessorKey: "quantity", header: "Disponível", cell: ({ row }) => <div><span className="font-medium tabular-nums">{formatQuantity(row.original.quantity, row.original.unit)}</span><p className="mt-1 text-[10px] text-muted-foreground">Mínimo: {formatQuantity(row.original.minimum_stock, row.original.unit)}</p></div> },
     { id: "status", accessorFn: (row) => row.quantity <= row.minimum_stock ? "baixo" : "em estoque", header: "Situação", cell: ({ row }) => { const low = row.original.quantity <= row.original.minimum_stock; return <Badge variant="outline" className={low ? "rounded-md border-amber-200 bg-amber-50 px-2 text-[10px] font-normal text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200" : "rounded-md border-emerald-200 bg-emerald-50 px-2 text-[10px] font-normal text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200"}><span className={`mr-1.5 size-1.5 rounded-full ${low ? "bg-amber-600" : "bg-emerald-600"}`} />{low ? "Estoque baixo" : "Em estoque"}</Badge>; } },
-    { id: "actions", header: "", enableSorting: false, cell: ({ row }) => <div className="flex flex-wrap items-center gap-1"><EditProductDialog product={row.original} categories={overview.categories} onSaved={() => router.refresh()} /><PackagingDialog product={row.original} onSaved={() => router.refresh()} /><AdjustmentDialog product={row.original} onSaved={() => router.refresh()} /><ArchiveProductButton product={row.original} onArchived={() => router.refresh()} /></div> },
-  ], [overview.categories, router]);
+    { id: "actions", header: "", enableSorting: false, cell: ({ row }) => <div className="flex flex-wrap items-center gap-1"><EditProductDialog product={row.original} categories={overview.categories} /><PackagingDialog product={row.original} /><AdjustmentDialog product={row.original} /><ArchiveProductButton product={row.original} /></div> },
+  ], [overview.categories]);
   const movementColumns = useMemo<DataTableColumn<InventoryMovement>[]>(() => [
     { accessorKey: "product", header: "Produto" },
     { accessorKey: "kind", header: "Tipo", cell: ({ row }) => movementKinds[row.original.kind] ?? row.original.kind },
@@ -558,8 +544,8 @@ export function InventoryView({ overview }: { overview: InventoryOverview }) {
   const stockValueCents = overview.products.reduce((total, product) => total + Math.round(product.quantity * product.average_cost_cents), 0);
   const visibleProducts = lowStockOnly ? overview.products.filter((product) => product.quantity <= product.minimum_stock) : overview.products;
 
-  return <div className="space-y-5">
-    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Estoque</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Saiba o que chegou, o que saiu e o que precisa repor.</p></div><div className="flex flex-wrap gap-2"><ReceiptDialog overview={overview} onSaved={() => router.refresh()} /><ProductDialog categories={overview.categories} /></div></div>
+  return <MutationRegion scope="inventory" label="Atualizando estoque, saldos e movimentações…"><div className="space-y-5">
+    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Estoque</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Saiba o que chegou, o que saiu e o que precisa repor.</p></div><div className="flex flex-wrap gap-2"><ReceiptDialog overview={overview} /><ProductDialog categories={overview.categories} /></div></div>
     <section className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
       <Card className="gap-0 rounded-[10px] border-border/90 p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="flex items-center justify-between text-[10px] text-muted-foreground">Produtos cadastrados<LuBoxes className="size-4" /></div><p className="mt-4 text-[25px] font-semibold tabular-nums">{overview.products.length}</p><p className="mt-2 text-[10px] text-muted-foreground">Seu catálogo de produtos</p></Card>
       <Card className="gap-0 rounded-[10px] border-border/90 p-4 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="flex items-center justify-between text-[10px] text-muted-foreground">Precisam de reposição<LuCircleAlert className="size-4" /></div><p className="mt-4 text-[25px] font-semibold tabular-nums">{lowStock}</p><p className="mt-2 text-[10px] text-muted-foreground">Abaixo do estoque mínimo</p></Card>
@@ -568,11 +554,11 @@ export function InventoryView({ overview }: { overview: InventoryOverview }) {
     </section>
     <Tabs value={tab} onValueChange={setTab}>
       <TabsList className="h-9"><TabsTrigger value="products" className="gap-2 text-[11px]"><LuBoxes className="size-3.5" /> Produtos</TabsTrigger><TabsTrigger value="movements" className="gap-2 text-[11px]"><LuHistory className="size-3.5" /> Movimentações</TabsTrigger><TabsTrigger value="count" className="gap-2 text-[11px]"><LuClipboardList className="size-3.5" /> Contagem</TabsTrigger></TabsList>
-      <TabsContent value="products" className="mt-4"><Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><DataTable columns={productColumns} data={visibleProducts} searchPlaceholder="Buscar produto ou código…" emptyMessage="Nenhum produto encontrado." toolbarActions={<div className="flex items-center gap-2"><CategoryDialog categories={overview.categories} /><BulkConversionDialog products={overview.products} onSaved={() => router.refresh()} /><Button type="button" variant={lowStockOnly ? "secondary" : "outline"} className="h-8 px-2.5 text-[10px]" onClick={() => setLowStockOnly((current) => !current)}>{lowStockOnly ? "Todos os produtos" : "Estoque baixo"}</Button></div>} /></Card></TabsContent>
+      <TabsContent value="products" className="mt-4"><Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><DataTable columns={productColumns} data={visibleProducts} searchPlaceholder="Buscar produto ou código…" emptyMessage="Nenhum produto encontrado." toolbarActions={<div className="flex items-center gap-2"><CategoryDialog categories={overview.categories} /><BulkConversionDialog products={overview.products} /><Button type="button" variant={lowStockOnly ? "secondary" : "outline"} className="h-8 px-2.5 text-[10px]" onClick={() => setLowStockOnly((current) => !current)}>{lowStockOnly ? "Todos os produtos" : "Estoque baixo"}</Button></div>} /></Card></TabsContent>
       <TabsContent value="movements" className="mt-4"><Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><DataTable columns={movementColumns} data={overview.movements} searchPlaceholder="Buscar produto, tipo ou motivo…" emptyMessage="Nenhuma movimentação registrada." toolbarActions={<span className="px-2 text-[10px] text-muted-foreground">{overview.movementCount} movimentações</span>} /></Card></TabsContent>
-      <TabsContent value="count" className="mt-4"><Card className="gap-0 rounded-[10px] border-border/90 p-5 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="text-[13px] font-semibold">Contagem de estoque</h2><p className="mt-1 text-[11px] text-muted-foreground">A fotografia do saldo detecta movimentações concorrentes antes de aplicar diferenças.</p></div><CountDialog onSaved={() => router.refresh()} /></div><div className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-md border border-border p-3"><p className="text-[10px] text-muted-foreground">Itens ativos</p><p className="mt-1 text-[17px] font-semibold">{overview.products.length}</p></div><div className="rounded-md border border-border p-3"><p className="text-[10px] text-muted-foreground">Produtos por lote</p><p className="mt-1 text-[17px] font-semibold">{overview.products.filter((product) => product.track_lots).length}</p></div><div className="rounded-md border border-border p-3"><p className="text-[10px] text-muted-foreground">Aplicação</p><p className="mt-1 text-[11px]">Versionada e atômica</p></div></div></Card></TabsContent>
+      <TabsContent value="count" className="mt-4"><Card className="gap-0 rounded-[10px] border-border/90 p-5 shadow-[0_1px_2px_rgba(16,24,40,0.03)]"><div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="text-[13px] font-semibold">Contagem de estoque</h2><p className="mt-1 text-[11px] text-muted-foreground">A fotografia do saldo detecta movimentações concorrentes antes de aplicar diferenças.</p></div><CountDialog /></div><div className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-md border border-border p-3"><p className="text-[10px] text-muted-foreground">Itens ativos</p><p className="mt-1 text-[17px] font-semibold">{overview.products.length}</p></div><div className="rounded-md border border-border p-3"><p className="text-[10px] text-muted-foreground">Produtos por lote</p><p className="mt-1 text-[17px] font-semibold">{overview.products.filter((product) => product.track_lots).length}</p></div><div className="rounded-md border border-border p-3"><p className="text-[10px] text-muted-foreground">Aplicação</p><p className="mt-1 text-[11px]">Versionada e atômica</p></div></div></Card></TabsContent>
     </Tabs>
-  </div>;
+  </div></MutationRegion>;
 }
 
 export function InventoryLoadError({ message }: { message: string }) {

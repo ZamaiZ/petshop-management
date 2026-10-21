@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, useTransition, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { LuImagePlus, LuPawPrint, LuStore, LuTrash2 } from "react-icons/lu";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -12,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { removeStoreLogo, saveStoreProfile, uploadStoreLogo } from "../actions";
+import { MutationRegion, runMutationFeedback } from "@/components/feedback/mutation-feedback";
 
 type AddressField = "postal_code" | "street" | "number" | "complement" | "district" | "city" | "state" | "reference";
 type StoreAddress = Record<AddressField, string>;
@@ -37,12 +37,10 @@ export function SettingsView({ store, logoUrl }: {
   store: { id: string; name: string; phone: string | null; email: string | null; address: unknown; logo_path: string | null };
   logoUrl: string | null;
 }) {
-  const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [saved, setSaved] = useState(false);
   const [address, setAddress] = useState(() => storeAddress(store.address));
 
   function changeAddress(field: AddressField, value: string) {
@@ -63,20 +61,17 @@ export function SettingsView({ store, logoUrl }: {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     setMessage("");
-    setSaved(false);
     startTransition(async () => {
-      const result = await saveStoreProfile({
+      const result = await runMutationFeedback({ scope: "settings", action: () => saveStoreProfile({
         name: String(form.get("name") ?? ""),
         phone: String(form.get("phone") ?? ""),
         email: String(form.get("email") ?? ""),
         address,
-      });
+      }), success: { title: "Dados da loja atualizados", description: "O perfil e a identidade da loja foram sincronizados." }, failureTitle: "Não foi possível salvar os dados da loja", unexpectedMessage: "Confira os dados e tente novamente." });
       if (!result.ok) {
         setMessage(result.message ?? "Não foi possível salvar os dados da loja.");
         return;
       }
-      setSaved(true);
-      router.refresh();
     });
   }
 
@@ -92,39 +87,34 @@ export function SettingsView({ store, logoUrl }: {
     setMessage("");
     setBusy(true);
     startTransition(async () => {
-      const result = await uploadStoreLogo(form);
+      const result = await runMutationFeedback({ scope: "settings", action: () => uploadStoreLogo(form), success: { title: "Logo atualizada", description: "A identidade visual da loja foi atualizada." }, failureTitle: "Não foi possível enviar a logo", unexpectedMessage: "Confira o arquivo e tente novamente." });
       setBusy(false);
       if (!result.ok) {
         setMessage(result.message ?? "Não foi possível enviar a imagem.");
         return;
       }
       if (fileRef.current) fileRef.current.value = "";
-      setSaved(true);
-      router.refresh();
     });
   }
 
   function clearLogo() {
     setMessage("");
     startTransition(async () => {
-      const result = await removeStoreLogo();
+      const result = await runMutationFeedback({ scope: "settings", action: () => removeStoreLogo(), success: { title: "Logo removida", description: "A identidade visual da loja foi atualizada." }, failureTitle: "Não foi possível remover a logo", unexpectedMessage: "Tente novamente em instantes." });
       if (!result.ok) {
         setMessage(result.message ?? "Não foi possível remover a logo.");
         return;
       }
-      setSaved(true);
-      router.refresh();
     });
   }
 
   return (
-    <div className="space-y-6">
+    <MutationRegion scope="settings" label="Atualizando os dados e a identidade da loja…"><div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-[-0.04em]">Configurações</h1>
         <p className="mt-1.5 text-sm text-muted-foreground">Dados e identidade da loja.</p>
       </div>
       {message ? <Alert variant="destructive"><AlertDescription>{message}</AlertDescription></Alert> : null}
-      {saved ? <Alert><AlertDescription>Alterações salvas.</AlertDescription></Alert> : null}
 
       <Card className="max-w-4xl gap-0 rounded-xl border-border/90 p-5 shadow-xs sm:p-6">
         <div className="flex items-center gap-2 text-sm font-semibold"><LuStore className="size-4" aria-hidden="true" />Identidade da loja</div>
@@ -172,6 +162,6 @@ export function SettingsView({ store, logoUrl }: {
           <Button type="submit" className="h-10 px-4" disabled={pending}>{pending ? "Salvando…" : "Salvar alterações"}</Button>
         </form>
       </Card>
-    </div>
+    </div></MutationRegion>
   );
 }

@@ -1,10 +1,17 @@
 import type { Metadata } from "next";
 import { Suspense, type ReactNode } from "react";
 import { io } from "next/cache";
+import { cookies } from "next/headers";
 import { requireUserContext } from "@/lib/auth/context";
 import { createClient } from "@/lib/supabase/server";
 import { WorkspaceShell } from "@/components/layout/workspace-shell";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  parseSidebarCollapsed,
+  parseTheme,
+  SIDEBAR_COOKIE_NAME,
+  THEME_COOKIE_NAME,
+} from "@/lib/ui-preferences";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { store } = await requireUserContext();
@@ -57,6 +64,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
 async function AuthenticatedWorkspace({ children }: { children: ReactNode }) {
   await io();
   const context = await requireUserContext();
+  const cookieStore = await cookies();
   const supabase = await createClient();
   const logoResult = context.store.logo_path
     ? await supabase.storage.from("store-assets").createSignedUrl(context.store.logo_path, 60 * 60 * 24)
@@ -66,8 +74,8 @@ async function AuthenticatedWorkspace({ children }: { children: ReactNode }) {
       store={{ id: context.store.id, name: context.store.name, logo_url: logoResult?.data?.signedUrl ?? null }}
       userId={context.user.id}
       userEmail={context.user.email ?? ""}
-      initialTheme={context.preferences.theme}
-      initialSidebarCollapsed={context.preferences.sidebar_collapsed}
+      initialTheme={parseTheme(cookieStore.get(THEME_COOKIE_NAME)?.value)}
+      initialSidebarCollapsed={parseSidebarCollapsed(cookieStore.get(SIDEBAR_COOKIE_NAME)?.value)}
     >
       {children}
     </WorkspaceShell>

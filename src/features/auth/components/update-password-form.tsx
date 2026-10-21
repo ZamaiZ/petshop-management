@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { AuthFeedback, AuthPasswordField } from "./auth-fields";
+import { MutationRegion, runMutationFeedback } from "@/components/feedback/mutation-feedback";
 
 export function UpdatePasswordForm() {
   const router = useRouter();
@@ -15,12 +16,16 @@ export function UpdatePasswordForm() {
     setPending(true);
     setMessage("");
     const formData = new FormData(event.currentTarget);
-    const response = await fetch("/api/auth/update-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: formData.get("password") }),
-    }).catch(() => null);
-    const result = response ? await response.json().catch(() => null) : null;
+    const result = await runMutationFeedback({ scope: "auth", action: async () => {
+      const response = await fetch("/api/auth/update-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: formData.get("password") }),
+      }).catch(() => null);
+      const payload = response ? await response.json().catch(() => null) : null;
+      return { ok: Boolean(response?.ok), message: payload?.message };
+    }, success: { title: "Senha atualizada", description: "Sua conta já pode acessar a loja." }, failureTitle: "Não foi possível atualizar a senha", unexpectedMessage: "Confira sua conexão e tente novamente." });
+    const response = { ok: result.ok };
 
     if (!response?.ok) {
       setMessage(result?.message ?? "Não foi possível atualizar a senha agora.");
@@ -31,11 +36,10 @@ export function UpdatePasswordForm() {
     setMessage("Senha atualizada. Você já pode continuar.");
     setPending(false);
     router.replace("/dashboard");
-    router.refresh();
   }
 
   return (
-    <div>
+    <MutationRegion scope="auth" label="Atualizando sua senha…"><div>
       <div className="mb-7">
         <h2 className="text-[24px] font-semibold tracking-[-0.04em]">Criar nova senha</h2>
         <p className="mt-2 text-[12px] text-muted-foreground">Escolha uma senha pessoal para acessar sua loja.</p>
@@ -47,6 +51,6 @@ export function UpdatePasswordForm() {
           {pending ? "Salvando…" : "Salvar nova senha"}
         </Button>
       </form>
-    </div>
+    </div></MutationRegion>
   );
 }

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getUserContext } from "@/lib/auth/context";
 import { hasValidQuantityPrecision } from "@/lib/business-rules";
 import { parseMoneyToCents } from "@/lib/inputs";
+import { logServerActionError } from "@/lib/server/action-error";
 import { createClient } from "@/lib/supabase/server";
 
 const itemSchema = z.object({
@@ -35,13 +36,15 @@ const saleSchema = z.object({
   deliveryFee: z.string().trim().max(40),
   deliveryAddress: z.object({
     label: z.string().trim().max(100), street: z.string().trim().min(1).max(200), number: z.string().trim().max(40),
-    complement: z.string().trim().max(100), district: z.string().trim().max(100), city: z.string().trim().min(1).max(100),
+    complement: z.string().trim().max(120), district: z.string().trim().max(120), city: z.string().trim().min(1).max(100),
     state: z.string().trim().max(2), postal_code: z.string().trim().max(20), reference: z.string().trim().max(200),
   }).nullable(),
   cashSessionId: z.string().uuid().nullable(),
 });
 
-function saleError(message: string) {
+function saleError(message: string, code = "") {
+  if (code === "PGRST202" || code === "42883") return "A operação de venda está temporariamente indisponível. Atualize a página e tente novamente.";
+  if (code === "42501") return "Você não tem permissão para concluir vendas nesta loja.";
   if (message.includes("insufficient_stock")) return "Não há estoque suficiente para um dos itens.";
   if (message.includes("insufficient_lot_stock")) return "O saldo dos lotes mudou. Atualize o estoque e tente novamente.";
   if (message.includes("expired_lot")) return "Um lote deste produto venceu e não pode ser vendido.";
@@ -57,6 +60,14 @@ function saleError(message: string) {
   if (message.includes("invalid_quantity_precision")) return "A quantidade não respeita a precisão deste produto.";
   if (message.includes("appointment_conflict")) return "O horário foi ocupado por outro atendimento.";
   return "Não foi possível concluir a venda. Confira os dados e tente novamente.";
+}
+
+function failSale(action: string, stage: string, error: unknown) {
+  const reference = logServerActionError(action, stage, error);
+  const shape = error && typeof error === "object" ? error as { code?: unknown; message?: unknown } : {};
+  const code = typeof shape.code === "string" ? shape.code : "";
+  const message = typeof shape.message === "string" ? shape.message : "";
+  return { ok: false as const, message: saleError(message, code), reference };
 }
 
 export async function completeSale(input: unknown) {
@@ -78,53 +89,74 @@ export async function completeSale(input: unknown) {
   }
   if (parsed.data.deliveryAddress && !parsed.data.customerId) return { ok: false, message: "Selecione o cliente para registrar uma entrega." };
 
-  const context = await getUserContext();
-  if (!context) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
-  const supabase = await createClient();
-  const productIds = [...new Set(parsed.data.items.flatMap((item) => item.productId ? [item.productId] : []))];
-  const packagingIds = [...new Set(parsed.data.items.flatMap((item) => item.packagingId ? [item.packagingId] : []))];
-  const [productsResult, packagingsResult] = await Promise.all([
-    productIds.length ? supabase.from("products").select("id, unit").eq("store_id", context.store.id).in("id", productIds).is("archived_at", null) : Promise.resolve({ data: [], error: null }),
-    packagingIds.length ? supabase.from("product_packagings").select("id, product_id, base_quantity").eq("store_id", context.store.id).in("id", packagingIds) : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (productsResult.error || productsResult.data.length !== productIds.length || packagingsResult.error || packagingsResult.data.length !== packagingIds.length) {
-    return { ok: false, message: "Um produto ou embalagem não está mais disponível. Atualize a venda." };
+  let stage = "load_user_context";
+  try {
+    const context = await getUserContext();
+    if (!context) return { ok: false as const, message: "Sua sessão expirou. Entre novamente." };
+
+    stage = "create_supabase_client";
+    const supabase = await createClient();
+    const productIds = [...new Set(parsed.data.items.flatMap((item) => item.productId ? [item.productId] : []))];
+    const packagingIds = [...new Set(parsed.data.items.flatMap((item) => item.packagingId ? [item.packagingId] : []))];
+
+    stage = "load_products_and_packagings";
+    const [productsResult, packagingsResult] = await Promise.all([
+      productIds.length ? supabase.from("products").select("id, unit").eq("store_id", context.store.id).in("id", productIds).is("archived_at", null) : Promise.resolve({ data: [], error: null }),
+      packagingIds.length ? supabase.from("product_packagings").select("id, product_id, base_quantity").eq("store_id", context.store.id).in("id", packagingIds) : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (productsResult.error) return failSale("complete_sale", "load_products", productsResult.error);
+    if (packagingsResult.error) return failSale("complete_sale", "load_packagings", packagingsResult.error);
+    if (productsResult.data.length !== productIds.length || packagingsResult.data.length !== packagingIds.length) {
+      return { ok: false as const, message: "Um produto ou embalagem não está mais disponível. Atualize a venda." };
+    }
+
+    const productById = new Map(productsResult.data.map((product) => [product.id, product]));
+    const packagingById = new Map(packagingsResult.data.map((packaging) => [packaging.id, packaging]));
+    const invalidQuantity = parsed.data.items.some((item) => {
+      if (!item.productId) return !hasValidQuantityPrecision(item.quantity, "un");
+      const product = productById.get(item.productId);
+      if (!product) return true;
+      if (!item.packagingId) return !hasValidQuantityPrecision(item.quantity, product.unit);
+      const packaging = packagingById.get(item.packagingId);
+      return !packaging || packaging.product_id !== product.id
+        || !hasValidQuantityPrecision(item.quantity, "un")
+        || !hasValidQuantityPrecision(item.quantity * packaging.base_quantity, product.unit);
+    });
+    if (invalidQuantity) return { ok: false as const, message: "Há uma quantidade que não respeita a unidade do item." };
+
+    const hasCash = payments.some((payment) => payment.method === "cash");
+    stage = "complete_sale_rpc";
+    const { data: saleId, error } = await supabase.rpc("complete_sale", {
+      p_store: context.store.id,
+      p_session: hasCash ? parsed.data.cashSessionId : null,
+      p_customer: parsed.data.customerId,
+      p_items: parsed.data.items.map((item) => ({
+        product_id: item.productId,
+        service_id: item.serviceId,
+        appointment_id: item.appointmentId,
+        packaging_id: item.packagingId,
+        quantity: item.quantity,
+      })),
+      p_payments: payments,
+      p_discount: discountCents,
+      p_key: parsed.data.key,
+      p_due: parsed.data.dueOn || null,
+      p_delivery_fee: deliveryFeeCents,
+      p_delivery_address: parsed.data.deliveryAddress,
+    });
+    if (error) return failSale("complete_sale", "complete_sale_rpc", error);
+    if (!saleId) return failSale("complete_sale", "complete_sale_rpc_empty_result", {
+      name: "SaleRpcEmptyResult",
+      code: "EMPTY_RESULT",
+      message: "The complete_sale RPC returned no sale identifier.",
+    });
+
+    stage = "revalidate_sale_views";
+    for (const path of ["/vendas", "/dashboard", "/estoque", "/financeiro", "/clientes", "/agenda", "/entregas"]) revalidatePath(path);
+    return { ok: true as const, saleId };
+  } catch (error) {
+    return failSale("complete_sale", stage, error);
   }
-  const productById = new Map(productsResult.data.map((product) => [product.id, product]));
-  const packagingById = new Map(packagingsResult.data.map((packaging) => [packaging.id, packaging]));
-  const invalidQuantity = parsed.data.items.some((item) => {
-    if (!item.productId) return !hasValidQuantityPrecision(item.quantity, "un");
-    const product = productById.get(item.productId);
-    if (!product) return true;
-    if (!item.packagingId) return !hasValidQuantityPrecision(item.quantity, product.unit);
-    const packaging = packagingById.get(item.packagingId);
-    return !packaging || packaging.product_id !== product.id
-      || !hasValidQuantityPrecision(item.quantity, "un")
-      || !hasValidQuantityPrecision(item.quantity * packaging.base_quantity, product.unit);
-  });
-  if (invalidQuantity) return { ok: false, message: "Há uma quantidade que não respeita a unidade do item." };
-  const hasCash = payments.some((payment) => payment.method === "cash");
-  const { data: saleId, error } = await supabase.rpc("complete_sale", {
-    p_store: context.store.id,
-    p_session: hasCash ? parsed.data.cashSessionId : null,
-    p_customer: parsed.data.customerId,
-    p_items: parsed.data.items.map((item) => ({
-      product_id: item.productId,
-      service_id: item.serviceId,
-      appointment_id: item.appointmentId,
-      packaging_id: item.packagingId,
-      quantity: item.quantity,
-    })),
-    p_payments: payments,
-    p_discount: discountCents,
-    p_key: parsed.data.key,
-    p_due: parsed.data.dueOn || null,
-    p_delivery_fee: deliveryFeeCents,
-    p_delivery_address: parsed.data.deliveryAddress,
-  });
-  if (error || !saleId) return { ok: false, message: saleError(error?.message ?? "unknown") };
-  for (const path of ["/vendas", "/dashboard", "/estoque", "/financeiro", "/clientes", "/agenda", "/entregas"]) revalidatePath(path);
-  return { ok: true, saleId };
 }
 
 const refundMethod = z.enum(["cash", "pix", "debit_card", "credit_card"]).nullable();

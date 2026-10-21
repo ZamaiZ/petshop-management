@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { LuArchive, LuBuilding2, LuMapPin, LuPencil, LuPlus, LuRotateCcw, LuSearch } from "react-icons/lu";
 import { archiveSupplier, createSupplier, lookupSupplierCnpj, restoreSupplier, updateSupplier } from "@/features/suppliers/actions";
 import { Button } from "@/components/ui/button";
@@ -15,6 +14,7 @@ import { formatCnpj, isValidCnpj } from "@/lib/cnpj";
 import { formatBrazilianPhone, normalizeBrazilianPhone } from "@/lib/phone";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { SupplierAddress, SupplierRecord } from "../queries";
+import { MutationRegion, runMutationFeedback } from "@/components/feedback/mutation-feedback";
 
 type SupplierFields = {
   name: string;
@@ -56,11 +56,10 @@ function initialSupplierFields(supplier: SupplierRecord | null): SupplierFields 
   };
 }
 
-function SupplierDialog({ supplier, open, onOpenChange, onSaved }: {
+function SupplierDialog({ supplier, open, onOpenChange }: {
   supplier: SupplierRecord | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaved: () => void;
 }) {
   const [fields, setFields] = useState(() => initialSupplierFields(supplier));
   const [pending, startTransition] = useTransition();
@@ -142,15 +141,12 @@ function SupplierDialog({ supplier, open, onOpenChange, onSaved }: {
     }
     setMessage("");
     startTransition(async () => {
-      const result = supplier
-        ? await updateSupplier({ ...fields, id: supplier.id })
-        : await createSupplier(fields);
+      const result = await runMutationFeedback({ scope: "suppliers", action: () => supplier ? updateSupplier({ ...fields, id: supplier.id }) : createSupplier(fields), success: supplier ? { title: "Fornecedor atualizado", description: "Os dados do fornecedor foram atualizados." } : { title: "Fornecedor cadastrado", description: "Ele já pode ser associado a recebimentos." }, failureTitle: supplier ? "Não foi possível atualizar o fornecedor" : "Não foi possível cadastrar o fornecedor", unexpectedMessage: "Confira os dados e tente novamente." });
       if (!result.ok) {
         setMessage(result.message ?? "Não foi possível salvar o fornecedor.");
         return;
       }
       onOpenChange(false);
-      onSaved();
     });
   }
 
@@ -193,7 +189,7 @@ function SupplierDialog({ supplier, open, onOpenChange, onSaved }: {
 }
 
 export function SuppliersView({ suppliers }: { suppliers: SupplierRecord[] }) {
-  const router = useRouter();
+  const runMutation = runMutationFeedback;
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [target, setTarget] = useState<SupplierRecord | null>(null);
@@ -217,17 +213,16 @@ export function SuppliersView({ suppliers }: { suppliers: SupplierRecord[] }) {
   function changeArchive(supplier: SupplierRecord, restore: boolean) {
     setMessage("");
     startTransition(async () => {
-      const result = restore ? await restoreSupplier(supplier.id) : await archiveSupplier(supplier.id);
+      const result = await runMutation({ scope: "suppliers", action: () => restore ? restoreSupplier(supplier.id) : archiveSupplier(supplier.id), success: restore ? { title: "Fornecedor reativado", description: "Ele voltou à lista de fornecedores ativos." } : { title: "Fornecedor arquivado", description: "Ele deixou de aparecer na lista de ativos." }, failureTitle: restore ? "Não foi possível reativar o fornecedor" : "Não foi possível arquivar o fornecedor", unexpectedMessage: "Atualize a lista e tente novamente." });
       if (!result.ok) {
         setMessage(result.message ?? "Não foi possível atualizar o fornecedor.");
         return;
       }
-      router.refresh();
     });
   }
 
   return (
-    <div className="space-y-6">
+    <MutationRegion scope="suppliers" label="Atualizando fornecedores…"><div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div><h1 className="text-2xl font-semibold tracking-[-0.04em]">Fornecedores</h1><p className="mt-1.5 text-sm text-muted-foreground">Consulte contatos e mantenha o catálogo de fornecedores.</p></div>
         <Button onClick={() => openDialog(null)} className="h-10"><LuPlus className="size-4" aria-hidden="true" />Novo fornecedor</Button>
@@ -274,7 +269,7 @@ export function SuppliersView({ suppliers }: { suppliers: SupplierRecord[] }) {
           </TabsContent>
         </Tabs>
       </Card>
-      {dialogOpen ? <SupplierDialog key={target ? `supplier-${target.id}` : "supplier-new"} supplier={target} open onOpenChange={setDialogOpen} onSaved={() => router.refresh()} /> : null}
-    </div>
+      {dialogOpen ? <SupplierDialog key={target ? `supplier-${target.id}` : "supplier-new"} supplier={target} open onOpenChange={setDialogOpen} /> : null}
+    </div></MutationRegion>
   );
 }

@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { LuMoon, LuSun } from "react-icons/lu";
 import { Button } from "@/components/ui/button";
+import { parseTheme, THEME_COOKIE_MAX_AGE, THEME_COOKIE_NAME, writeBrowserPreferenceCookie } from "@/lib/ui-preferences";
 
 function readTheme() {
-  return document.cookie.match(/(?:^|;\s*)petshop-theme=(system|light|dark)(?:;|$)/)?.[1] ?? "system";
+  const value = document.cookie.match(new RegExp(`(?:^|;\\s*)${THEME_COOKIE_NAME}=(system|light|dark)(?:;|$)`))?.[1];
+  return parseTheme(value);
 }
 
 export function AuthThemeToggle() {
@@ -17,7 +19,7 @@ export function AuthThemeToggle() {
     setDark(nextDark);
     document.documentElement.dataset.theme = nextTheme;
     document.documentElement.classList.toggle("dark", nextDark);
-    document.cookie = `petshop-theme=${nextTheme}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    writeBrowserPreferenceCookie(THEME_COOKIE_NAME, nextTheme, THEME_COOKIE_MAX_AGE);
   }
 
   return (

@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import {
   LuDog,
   LuMail,
@@ -35,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatCivilDate, formatMoney, formatShortDate } from "@/lib/format";
 import { formatBrazilianPhone } from "@/lib/phone";
 import { archiveCustomer, archiveCustomerAddress, archivePet, createCustomer, createCustomerAddress, createPet, updatePet } from "../actions";
+import { MutationRegion, runMutationFeedback } from "@/components/feedback/mutation-feedback";
 import type { CustomerRecord } from "../queries";
 
 const petSpeciesOptions: { value: string; label: string }[] = [
@@ -77,7 +77,6 @@ function keepAddressValue(current: string, previous: string | null | undefined) 
 }
 
 function CustomerFormDialog() {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -89,7 +88,7 @@ function CustomerFormDialog() {
     const data = new FormData(form);
     setMessage("");
     startTransition(async () => {
-      const result = await createCustomer(data);
+      const result = await runMutationFeedback({ scope: "customers", action: () => createCustomer(data), success: { title: "Cliente cadastrado", description: "Ele já está disponível na lista de clientes." }, failureTitle: "Não foi possível cadastrar o cliente", unexpectedMessage: "Confira os dados e tente novamente." });
       if (!result.ok) {
         setMessage(result.message ?? "Não foi possível concluir a operação.");
         return;
@@ -97,7 +96,6 @@ function CustomerFormDialog() {
       form.reset();
       setPhone("");
       setOpen(false);
-      router.refresh();
     });
   }
 
@@ -141,7 +139,7 @@ function CustomerFormDialog() {
   );
 }
 
-function PetForm({ customerId, pet, onSaved }: { customerId: string; pet?: CustomerRecord["pets"][number]; onSaved: () => void }) {
+function PetForm({ customerId, pet, onSaved }: { customerId: string; pet?: CustomerRecord["pets"][number]; onSaved?: () => void }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
   const [birthDate, setBirthDate] = useState(pet?.birth_date ?? "");
@@ -160,7 +158,7 @@ function PetForm({ customerId, pet, onSaved }: { customerId: string; pet?: Custo
     if (pet) data.set("id", pet.id);
     setMessage("");
     startTransition(async () => {
-      const result = pet ? await updatePet(data) : await createPet(data);
+      const result = await runMutationFeedback({ scope: "customers", action: () => pet ? updatePet(data) : createPet(data), success: { title: pet ? "Pet atualizado" : "Pet cadastrado", description: "O perfil do cliente foi atualizado." }, failureTitle: "Não foi possível salvar o pet", unexpectedMessage: "Confira os dados e tente novamente." });
       if (!result.ok) {
         setMessage(result.message ?? "Não foi possível concluir a operação.");
         return;
@@ -170,8 +168,9 @@ function PetForm({ customerId, pet, onSaved }: { customerId: string; pet?: Custo
         setBirthDate("");
         setSpecies("Cachorro");
         setSpeciesOther("");
+      } else {
+        onSaved?.();
       }
-      onSaved();
     });
   }
 
@@ -195,18 +194,18 @@ function PetForm({ customerId, pet, onSaved }: { customerId: string; pet?: Custo
   );
 }
 
-function PetEditDialog({ customerId, pet, onSaved }: { customerId: string; pet: CustomerRecord["pets"][number]; onSaved: () => void }) {
+function PetEditDialog({ customerId, pet }: { customerId: string; pet: CustomerRecord["pets"][number] }) {
   const [open, setOpen] = useState(false);
   return <Dialog open={open} onOpenChange={setOpen}>
     <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[10px]" onClick={() => setOpen(true)}>Editar</Button>
     <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[520px]">
       <DialogHeader><DialogTitle className="text-[17px]">Dados do pet</DialogTitle><DialogDescription className="text-[11px]">Atualize informações usadas no atendimento e na agenda.</DialogDescription></DialogHeader>
-      <PetForm key={pet.id} customerId={customerId} pet={pet} onSaved={() => { setOpen(false); onSaved(); }} />
+      <PetForm key={pet.id} customerId={customerId} pet={pet} onSaved={() => setOpen(false)} />
     </DialogContent>
   </Dialog>;
 }
 
-function ArchivePetButton({ customerId, pet, onArchived }: { customerId: string; pet: CustomerRecord["pets"][number]; onArchived: () => void }) {
+function ArchivePetButton({ customerId, pet }: { customerId: string; pet: CustomerRecord["pets"][number] }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -214,10 +213,9 @@ function ArchivePetButton({ customerId, pet, onArchived }: { customerId: string;
     event.preventDefault();
     setMessage("");
     startTransition(async () => {
-      const result = await archivePet(customerId, pet.id);
+      const result = await runMutationFeedback({ scope: "customers", action: () => archivePet(customerId, pet.id), success: { title: "Pet arquivado", description: "Ele deixou de aparecer nas opções de novos atendimentos." }, failureTitle: "Não foi possível arquivar o pet", unexpectedMessage: "Atualize o perfil e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível arquivar o pet."); return; }
       setOpen(false);
-      onArchived();
     });
   }
   return <AlertDialog open={open} onOpenChange={setOpen}>
@@ -226,7 +224,7 @@ function ArchivePetButton({ customerId, pet, onArchived }: { customerId: string;
   </AlertDialog>;
 }
 
-function AddressForm({ customerId, onSaved }: { customerId: string; onSaved: () => void }) {
+function AddressForm({ customerId }: { customerId: string }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
   const [address, setAddress] = useState<CustomerAddressFields>(emptyCustomerAddress);
@@ -249,13 +247,12 @@ function AddressForm({ customerId, onSaved }: { customerId: string; onSaved: () 
     event.preventDefault();
     setMessage("");
     startTransition(async () => {
-      const result = await createCustomerAddress({
+      const result = await runMutationFeedback({ scope: "customers", action: () => createCustomerAddress({
         customerId,
         ...address,
-      });
+      }), success: { title: "Endereço cadastrado", description: "O perfil do cliente foi atualizado." }, failureTitle: "Não foi possível cadastrar o endereço", unexpectedMessage: "Confira o endereço e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setAddress(emptyCustomerAddress);
-      onSaved();
     });
   }
 
@@ -277,7 +274,7 @@ function AddressForm({ customerId, onSaved }: { customerId: string; onSaved: () 
   </form>;
 }
 
-function ArchiveAddressButton({ customerId, addressId, onSaved }: { customerId: string; addressId: string; onSaved: () => void }) {
+function ArchiveAddressButton({ customerId, addressId }: { customerId: string; addressId: string }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -285,18 +282,16 @@ function ArchiveAddressButton({ customerId, addressId, onSaved }: { customerId: 
   function archive() {
     setMessage("");
     startTransition(async () => {
-      const result = await archiveCustomerAddress(customerId, addressId);
+      const result = await runMutationFeedback({ scope: "customers", action: () => archiveCustomerAddress(customerId, addressId), success: { title: "Endereço removido", description: "O perfil do cliente foi atualizado." }, failureTitle: "Não foi possível remover o endereço", unexpectedMessage: "Atualize o perfil e tente novamente." });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
-      onSaved();
     });
   }
 
   return <AlertDialog open={open} onOpenChange={setOpen}><AlertDialogTrigger render={<Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[9px] text-destructive" />}>Remover</AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remover este endereço?</AlertDialogTitle><AlertDialogDescription>O endereço sai do cadastro e deixa de aparecer nas próximas entregas. Vendas já registradas mantêm a cópia usada na entrega.</AlertDialogDescription></AlertDialogHeader>{message ? <p role="alert" className="text-[11px] text-destructive">{message}</p> : null}<AlertDialogFooter><AlertDialogCancel disabled={pending}>Voltar</AlertDialogCancel><AlertDialogAction onClick={archive} disabled={pending}>{pending ? "Removendo…" : "Remover endereço"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>;
 }
 
-function CustomerProfile({ customer, onArchive }: { customer: CustomerRecord; onArchive: () => void }) {
-  const router = useRouter();
+function CustomerProfile({ customer }: { customer: CustomerRecord }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
   const [open, setOpen] = useState(false);
@@ -304,14 +299,12 @@ function CustomerProfile({ customer, onArchive }: { customer: CustomerRecord; on
   function archive() {
     setMessage("");
     startTransition(async () => {
-      const result = await archiveCustomer(customer.id);
+      const result = await runMutationFeedback({ scope: "customers", action: () => archiveCustomer(customer.id), success: { title: "Cliente arquivado", description: "Ele deixou de aparecer na lista de clientes ativos." }, failureTitle: "Não foi possível arquivar o cliente", unexpectedMessage: "Atualize a lista e tente novamente." });
       if (!result.ok) {
         setMessage(result.message ?? "Não foi possível concluir a operação.");
         return;
       }
       setOpen(false);
-      onArchive();
-      router.refresh();
     });
   }
 
@@ -329,12 +322,12 @@ function CustomerProfile({ customer, onArchive }: { customer: CustomerRecord; on
         </div>
         <section className="space-y-2">
           <h3 className="text-[12px] font-semibold">Endereços</h3>
-          {customer.addresses.length ? <div className="space-y-2">{customer.addresses.map((address) => <div key={address.id} className="flex items-start justify-between gap-3 rounded-md border border-border p-3"><div className="min-w-0"><p className="text-[11px] font-medium">{address.label || "Endereço"}</p><p className="mt-1 text-[10px] leading-4 text-muted-foreground">{[`${address.street}${address.number ? `, ${address.number}` : ""}`, address.complement, address.district, [address.city, address.state].filter(Boolean).join(" / "), address.postal_code, address.reference].filter(Boolean).join(" · ")}</p></div><ArchiveAddressButton customerId={customer.id} addressId={address.id} onSaved={() => router.refresh()} /></div>)}</div> : <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-[10px] text-muted-foreground">Nenhum endereço cadastrado.</p>}
-          <AddressForm customerId={customer.id} onSaved={() => router.refresh()} />
+          {customer.addresses.length ? <div className="space-y-2">{customer.addresses.map((address) => <div key={address.id} className="flex items-start justify-between gap-3 rounded-md border border-border p-3"><div className="min-w-0"><p className="text-[11px] font-medium">{address.label || "Endereço"}</p><p className="mt-1 text-[10px] leading-4 text-muted-foreground">{[`${address.street}${address.number ? `, ${address.number}` : ""}`, address.complement, address.district, [address.city, address.state].filter(Boolean).join(" / "), address.postal_code, address.reference].filter(Boolean).join(" · ")}</p></div><ArchiveAddressButton customerId={customer.id} addressId={address.id} /></div>)}</div> : <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-[10px] text-muted-foreground">Nenhum endereço cadastrado.</p>}
+          <AddressForm customerId={customer.id} />
         </section>
         <section className="space-y-2">
           <h3 className="text-[12px] font-semibold">Pets</h3>
-          {customer.pets.length ? <div className="space-y-2">{customer.pets.map((pet) => <div key={pet.id} className="rounded-md border border-border p-3"><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-2"><LuDog className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><div className="min-w-0"><p className="truncate text-[11px] font-medium">{pet.name}</p><p className="text-[10px] text-muted-foreground">{pet.breed ? `${pet.breed} · ` : ""}{pet.species}{pet.birth_date ? ` · Nasc. ${formatCivilDate(pet.birth_date)}` : ""}{pet.weight_kg ? ` · ${pet.weight_kg.toLocaleString("pt-BR")} kg` : ""}</p></div></div><div className="flex shrink-0 gap-1"><PetEditDialog customerId={customer.id} pet={pet} onSaved={() => router.refresh()} /><ArchivePetButton customerId={customer.id} pet={pet} onArchived={() => router.refresh()} /></div></div>{pet.care_notes ? <p className="mt-2 whitespace-pre-wrap text-[10px] leading-4"><span className="font-medium">Cuidados: </span><span className="text-muted-foreground">{pet.care_notes}</span></p> : null}{pet.behavior_notes ? <p className="mt-1 whitespace-pre-wrap text-[10px] leading-4"><span className="font-medium">Comportamento: </span><span className="text-muted-foreground">{pet.behavior_notes}</span></p> : null}</div>)}</div> : <p className="rounded-md border border-dashed border-border px-3 py-5 text-center text-[11px] text-muted-foreground">Nenhum pet cadastrado.</p>}
+          {customer.pets.length ? <div className="space-y-2">{customer.pets.map((pet) => <div key={pet.id} className="rounded-md border border-border p-3"><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-2"><LuDog className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><div className="min-w-0"><p className="truncate text-[11px] font-medium">{pet.name}</p><p className="text-[10px] text-muted-foreground">{pet.breed ? `${pet.breed} · ` : ""}{pet.species}{pet.birth_date ? ` · Nasc. ${formatCivilDate(pet.birth_date)}` : ""}{pet.weight_kg ? ` · ${pet.weight_kg.toLocaleString("pt-BR")} kg` : ""}</p></div></div><div className="flex shrink-0 gap-1"><PetEditDialog customerId={customer.id} pet={pet} /><ArchivePetButton customerId={customer.id} pet={pet} /></div></div>{pet.care_notes ? <p className="mt-2 whitespace-pre-wrap text-[10px] leading-4"><span className="font-medium">Cuidados: </span><span className="text-muted-foreground">{pet.care_notes}</span></p> : null}{pet.behavior_notes ? <p className="mt-1 whitespace-pre-wrap text-[10px] leading-4"><span className="font-medium">Comportamento: </span><span className="text-muted-foreground">{pet.behavior_notes}</span></p> : null}</div>)}</div> : <p className="rounded-md border border-dashed border-border px-3 py-5 text-center text-[11px] text-muted-foreground">Nenhum pet cadastrado.</p>}
         </section>
         <section className="rounded-md border border-border p-3">
           <h3 className="text-[11px] font-semibold">Última compra</h3>
@@ -342,7 +335,7 @@ function CustomerProfile({ customer, onArchive }: { customer: CustomerRecord; on
         </section>
         {customer.recent_sales.length ? <section className="space-y-2"><h3 className="text-[12px] font-semibold">Compras recentes</h3><div className="divide-y rounded-md border border-border">{customer.recent_sales.map((sale) => <div key={sale.id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-[10px]"><span>Venda #{sale.number}<span className="ml-2 text-muted-foreground">{sale.completed_at ? formatShortDate(sale.completed_at) : ""}</span></span><span className="shrink-0 font-medium tabular-nums">{formatMoney(sale.total_cents)}</span></div>)}</div></section> : null}
         {customer.notes ? <p className="whitespace-pre-wrap rounded-md bg-muted/60 p-3 text-[11px] leading-5">{customer.notes}</p> : null}
-        <PetForm customerId={customer.id} onSaved={() => router.refresh()} />
+        <PetForm customerId={customer.id} />
         {message ? <p role="alert" className="text-[11px] text-destructive">{message}</p> : null}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => setOpen(false)}>Fechar</Button>
@@ -354,7 +347,6 @@ function CustomerProfile({ customer, onArchive }: { customer: CustomerRecord; on
 }
 
 export function CustomerView({ customers }: { customers: CustomerRecord[] }) {
-  const router = useRouter();
   const columns = useMemo<DataTableColumn<CustomerRecord>[]>(() => [
     {
       accessorKey: "name",
@@ -369,11 +361,11 @@ export function CustomerView({ customers }: { customers: CustomerRecord[] }) {
     },
     { id: "pets", accessorFn: (row) => row.pets.map((pet) => `${pet.name} ${pet.breed ?? ""}`).join(" "), header: "Pets", cell: ({ row }) => <span className="block max-w-64 truncate">{row.original.pets.map((pet) => `${pet.name}${pet.breed ? ` · ${pet.breed}` : ""}`).join(", ") || <span className="text-muted-foreground">Nenhum pet</span>}</span> },
     { id: "balance", accessorFn: (row) => row.balance_cents, header: "A receber", cell: ({ row }) => row.original.balance_cents > 0 ? <Badge variant="outline" className="rounded-md border-amber-200 bg-amber-50 px-2 text-[10px] font-normal text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{formatMoney(row.original.balance_cents)}</Badge> : <span className="text-muted-foreground">—</span> },
-    { id: "actions", header: "", enableSorting: false, cell: ({ row }) => <CustomerProfile customer={row.original} onArchive={() => router.refresh()} /> },
-  ], [router]);
+    { id: "actions", header: "", enableSorting: false, cell: ({ row }) => <CustomerProfile customer={row.original} /> },
+  ], []);
 
   return (
-    <div className="space-y-5">
+    <MutationRegion scope="customers" label="Atualizando clientes, pets e endereços…"><div className="space-y-5">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Clientes e pets</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Cadastro, pets e saldos pendentes.</p></div>
         <CustomerFormDialog />
@@ -381,7 +373,7 @@ export function CustomerView({ customers }: { customers: CustomerRecord[] }) {
       <Card className="gap-0 rounded-[10px] border-border/90 p-0 shadow-[0_1px_2px_rgba(16,24,40,0.03)]">
         <DataTable columns={columns} data={customers} searchPlaceholder="Buscar por nome, telefone ou pet…" emptyMessage="Nenhum cliente encontrado." toolbarActions={<span className="px-2 text-[10px] text-muted-foreground">{customers.length} clientes cadastrados</span>} />
       </Card>
-    </div>
+    </div></MutationRegion>
   );
 }
 

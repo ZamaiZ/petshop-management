@@ -61,7 +61,7 @@ Os nomes dos grupos são rótulos de organização; os destinos acima são links
 - Manter nomes curtos, específicos e consistentes com os títulos das páginas.
 - Em sidebar expandida, o controle de recolher aponta para a esquerda; recolhida, aponta para a direita.
 - A seta gira com transição curta ao alternar o estado. O controle deve permanecer inteiro e clicável, sem ser cortado por `overflow`, header ou stacking context.
-- Preservar a preferência de sidebar existente.
+- Preservar a preferência da sidebar no cookie do navegador (`sidebar_state`).
 - Em telas estreitas, usar o comportamento móvel já previsto pelo componente de sidebar, sem comprimir os links nem esconder os rótulos enquanto o menu estiver aberto.
 - Configurações continua alcançável pelo dropdown do cabeçalho em todos os estados da sidebar.
 

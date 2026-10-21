@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { LuPlus } from "react-icons/lu";
 import { Button } from "@/components/ui/button";
 import { BrlInput } from "@/components/ui/brl-input";
@@ -12,9 +11,9 @@ import { formatMoneyInput } from "@/lib/format";
 import { parseMoneyToCents } from "@/lib/inputs";
 import { openCash } from "../actions";
 import { CashDenominationFields, cashCountPayload, cashCountTotal, type CashCountMap } from "./cash-denominations";
+import { runMutationFeedback } from "@/components/feedback/mutation-feedback";
 
 export function OpenCashDialog() {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
@@ -32,10 +31,15 @@ export function OpenCashDialog() {
     }
     setMessage("");
     startTransition(async () => {
-      const result = await openCash({ opening: formatMoneyInput(openingCents), counts: countByDenomination ? cashCountPayload(counts) : [], key });
+      const result = await runMutationFeedback({
+        scope: "finance",
+        action: () => openCash({ opening: formatMoneyInput(openingCents), counts: countByDenomination ? cashCountPayload(counts) : [], key }),
+        success: { title: "Caixa aberto", description: "O resumo financeiro foi atualizado." },
+        failureTitle: "Não foi possível abrir o caixa",
+        unexpectedMessage: "Tente novamente. Se o problema continuar, informe a referência exibida no aviso.",
+      });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setOpen(false);
-      router.refresh();
     });
   }
 

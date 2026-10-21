@@ -26,7 +26,7 @@ Decisões informadas pelo usuário:
 ## Escopo já implementado no workspace
 
 - **Acesso:** login, cadastro com gate de autorização, recuperação e redefinição de senha.
-- **Shell e dashboard:** navegação autenticada, tema, preferências da sidebar, indicadores agregados no servidor, gráfico e vendas recentes.
+- **Shell e dashboard:** navegação autenticada, tema e preferência da sidebar persistidos em cookies do navegador, indicadores agregados no servidor, gráfico e vendas recentes.
 - **Clientes:** clientes, pets, endereços, perfil e vendas recentes.
 - **Estoque:** produtos e categorias, embalagens com barcode, edição e arquivamento, recebimento multi-item, fornecedor, custo médio, lotes/validade, FEFO, ajuste auditável, contagem versionada por lote e conversão de produto fechado para granel.
 - **PDV e vendas:** scanner HID, busca por código/SKU/nome, embalagens, itens pesáveis, serviços e agendamentos, desconto, pagamentos divididos, fiado, entrega, detalhe, cancelamento e devolução com rateio e trilha de auditoria.

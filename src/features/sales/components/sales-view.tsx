@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { LuArrowRight, LuBanknote, LuCalendarDays, LuChartNoAxesCombined, LuCircleCheck, LuCreditCard, LuDownload, LuPlus, LuSearch } from "react-icons/lu";
+import { LuArrowRight, LuBanknote, LuCalendarDays, LuChartNoAxesCombined, LuCircleCheck, LuCreditCard, LuDownload, LuLoaderCircle, LuPlus, LuSearch } from "react-icons/lu";
 import { DataTable, type DataTableColumn } from "@/components/data-table/data-table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ import { quantityPrecision } from "@/lib/business-rules";
 import { formatMoney, formatQuantity, formatShortDate, formatTime, localDateKey } from "@/lib/format";
 import { cancelSale, returnSaleItems } from "../actions";
 import type { SaleRecord, SalesOverview } from "../queries";
+import { MutationRegion, runMutationFeedback } from "@/components/feedback/mutation-feedback";
 
 const paymentLabels: Record<string, string> = { cash: "Dinheiro", pix: "Pix", debit_card: "Cartão de débito", credit_card: "Cartão de crédito", credit: "A receber", transfer: "Transferência" };
 const deliveryLabels: Record<string, string> = { preparing: "Preparando", ready: "Pronta", out_for_delivery: "Em rota", delivered: "Entregue", cancelled: "Cancelada" };
@@ -45,7 +46,6 @@ function stateClass(sale: SaleRecord) {
 }
 
 function SaleActionDialog({ sale, cashSessionId }: { sale: SaleRecord; cashSessionId: string | null }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"details" | "cancel" | "return">("details");
   const [pending, startTransition] = useTransition();
@@ -67,12 +67,15 @@ function SaleActionDialog({ sale, cashSessionId }: { sale: SaleRecord; cashSessi
     event.preventDefault();
     setMessage("");
     startTransition(async () => {
-      const result = mode === "cancel"
-        ? await cancelSale({ saleId: sale.id, reason, method, cashSessionId, key })
-        : await returnSaleItems({ saleId: sale.id, reason, method, cashSessionId, key, lines: returnLines.map((line) => ({ saleItemId: line.saleItemId, quantity: Number(line.quantity), restock: line.restock })).filter((line) => line.quantity > 0) });
+      const result = await runMutationFeedback({ scope: "sales", action: () => mode === "cancel"
+        ? cancelSale({ saleId: sale.id, reason, method, cashSessionId, key })
+        : returnSaleItems({ saleId: sale.id, reason, method, cashSessionId, key, lines: returnLines.map((line) => ({ saleItemId: line.saleItemId, quantity: Number(line.quantity), restock: line.restock })).filter((line) => line.quantity > 0) }),
+        success: mode === "cancel" ? { title: "Venda cancelada", description: "O status e o financeiro foram atualizados." } : { title: "Devolução registrada", description: "A venda e o estoque foram atualizados." },
+        failureTitle: mode === "cancel" ? "Não foi possível cancelar a venda" : "Não foi possível registrar a devolução",
+        unexpectedMessage: "Confira os dados e tente novamente.",
+      });
       if (!result.ok) { setMessage(result.message ?? "Não foi possível concluir a operação."); return; }
       setMode("details");
-      router.refresh();
     });
   }
 
@@ -128,7 +131,9 @@ export function SalesView({ overview, timezone, composerData, composerError, new
   const [search, setSearch] = useState("");
   const [mobilePage, setMobilePage] = useState(0);
   const [completedSale, setCompletedSale] = useState("");
+  const [composerOpen, setComposerOpen] = useState(newSaleOpen);
   const openedFromList = useRef(false);
+  useEffect(() => { setComposerOpen(newSaleOpen); }, [newSaleOpen]);
   useEffect(() => { if (!newSaleOpen) openedFromList.current = false; }, [newSaleOpen]);
 
   const from = range === "today" ? today : range === "7" ? addCivilDays(today, -6) : range === "30" ? addCivilDays(today, -29) : range === "90" ? addCivilDays(today, -89) : customFrom;
@@ -156,6 +161,7 @@ export function SalesView({ overview, timezone, composerData, composerError, new
   const mobileSales = filteredSales.slice(currentMobilePage * 10, currentMobilePage * 10 + 10);
 
   function closeComposer() {
+    setComposerOpen(false);
     if (openedFromList.current) {
       openedFromList.current = false;
       router.back();
@@ -167,7 +173,8 @@ export function SalesView({ overview, timezone, composerData, composerError, new
   function openComposer() {
     openedFromList.current = true;
     setCompletedSale("");
-    router.push("/vendas?nova=1", { scroll: false });
+    setComposerOpen(true);
+    router.push(initialDelivery ? "/vendas?nova=1&entrega=1" : "/vendas?nova=1", { scroll: false });
   }
 
   function exportHref() {
@@ -187,7 +194,7 @@ export function SalesView({ overview, timezone, composerData, composerError, new
     { id: "details", header: "", enableSorting: false, cell: ({ row }) => <SaleActionDialog sale={row.original} cashSessionId={overview.cashSessionId} /> },
   ], [overview.cashSessionId, timezone]);
 
-  return <div className="space-y-5">
+  return <MutationRegion scope="sales" label="Atualizando vendas, pagamentos e estoque…"><div className="space-y-5">
     <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h1 className="text-[24px] font-semibold tracking-[-0.04em]">Vendas</h1><p className="mt-1.5 text-[12px] text-muted-foreground">Histórico e pagamentos.</p></div><Button className="h-9 gap-2 rounded-md px-3 text-[11px]" onClick={openComposer}><LuPlus className="size-3.5" /> Nova venda</Button></div>
     {completedSale ? <Alert><LuCircleCheck className="size-4" /><AlertDescription>Venda registrada com sucesso. Código {completedSale}.</AlertDescription></Alert> : null}
     <section className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
@@ -218,13 +225,13 @@ export function SalesView({ overview, timezone, composerData, composerError, new
       </div>
       <div className="hidden md:block"><DataTable columns={columns} data={filteredSales} emptyMessage="Nenhuma venda encontrada." hideSearch /></div>
     </Card>
-    <Dialog open={newSaleOpen} onOpenChange={(open) => { if (!open && newSaleOpen) closeComposer(); }}>
+    <Dialog open={composerOpen} onOpenChange={(open) => { if (!open && composerOpen) closeComposer(); }}>
       <DialogContent className="flex h-[96dvh] max-h-[96dvh] w-[98vw] max-w-[1440px] flex-col overflow-hidden p-0 sm:max-w-[1440px]">
         <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-12 sm:px-6"><DialogTitle className="text-[17px]">Nova venda</DialogTitle><DialogDescription className="text-[11px]">Selecione os produtos ou serviços, revise o carrinho e conclua o pagamento.</DialogDescription></DialogHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 xl:px-7">{composerData ? <SaleComposer data={composerData} timezone={timezone} initialDelivery={initialDelivery} onCompleted={(saleId) => { setCompletedSale(saleId.slice(0, 8)); openedFromList.current = false; router.replace("/vendas", { scroll: false }); router.refresh(); }} /> : <Alert variant="destructive"><AlertTitle>Falha ao carregar o catálogo</AlertTitle><AlertDescription className="flex flex-wrap items-center justify-between gap-3">{composerError ?? "Tente novamente."}<Button type="button" variant="outline" size="sm" onClick={() => router.refresh()}>Tentar novamente</Button></AlertDescription></Alert>}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 xl:px-7">{composerData ? <SaleComposer data={composerData} timezone={timezone} initialDelivery={initialDelivery} onCompleted={(saleId) => { setCompletedSale(saleId.slice(0, 8)); openedFromList.current = false; setComposerOpen(false); router.replace("/vendas", { scroll: false }); }} /> : composerError ? <Alert variant="destructive"><AlertTitle>Falha ao carregar o catálogo</AlertTitle><AlertDescription className="flex flex-wrap items-center justify-between gap-3">{composerError}<Button type="button" variant="outline" size="sm" onClick={() => router.refresh()}>Tentar novamente</Button></AlertDescription></Alert> : <div role="status" aria-live="polite" className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-center text-xs text-muted-foreground"><LuLoaderCircle className="size-5 animate-spin text-primary" /><span>Carregando produtos, serviços e clientes…</span></div>}</div>
       </DialogContent>
     </Dialog>
-  </div>;
+  </div></MutationRegion>;
 }
 
 function Metric({ label, value, detail, icon }: { label: string; value: string; detail: string; icon: ReactNode }) {
