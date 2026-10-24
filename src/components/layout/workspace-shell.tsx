@@ -95,9 +95,22 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || (href !== "/dashboard" && pathname.startsWith(`${href}/`));
 }
 
-function AppSidebar({ store, pathname, role }: { store: StoreInfo; pathname: string; role: StoreRole }) {
+function AppSidebar({
+  store,
+  pathname,
+  role,
+  pendingHref,
+  onNavigate,
+}: {
+  store: StoreInfo;
+  pathname: string;
+  role: StoreRole;
+  pendingHref: string | null;
+  onNavigate: (href: string) => void;
+}) {
   const { state, isMobile, openMobile } = useSidebar();
   const isExpanded = isMobile ? openMobile : state === "expanded";
+  const highlightedPathname = pendingHref ?? pathname;
   const toggleLabel = isMobile
     ? (openMobile ? "Fechar menu" : "Abrir menu")
     : (state === "expanded" ? "Recolher menu" : "Expandir menu");
@@ -138,14 +151,34 @@ function AppSidebar({ store, pathname, role }: { store: StoreInfo; pathname: str
             <SidebarGroupContent>
               <SidebarMenu className="gap-1 group-data-[collapsible=icon]:items-center">
               {group.items.filter((item) => item.href !== "/equipe" || role === "owner").map(({ href, label, icon: Icon }) => {
-                  const active = isActivePath(pathname, href);
+                  const active = isActivePath(highlightedPathname, href);
+                  const pending = pendingHref === href;
                   return (
                     <SidebarMenuItem key={href}>
                       <SidebarMenuButton
-                        render={<Link href={href} aria-current={active ? "page" : undefined} />}
+                        render={
+                          <Link
+                            href={href}
+                            aria-current={active ? "page" : undefined}
+                            aria-busy={pending || undefined}
+                            onClick={(event) => {
+                              if (
+                                !active &&
+                                event.button === 0 &&
+                                !event.metaKey &&
+                                !event.ctrlKey &&
+                                !event.shiftKey &&
+                                !event.altKey &&
+                                !event.defaultPrevented
+                              ) {
+                                onNavigate(href);
+                              }
+                            }}
+                          />
+                        }
                         isActive={active}
                         tooltip={label}
-                        className="h-10 rounded-md px-3 text-[12px] font-medium text-muted-foreground hover:text-foreground/80 data-active:text-foreground/80 [&>svg]:size-[17px]"
+                        className={`h-10 rounded-md px-3 text-[12px] font-medium text-muted-foreground hover:text-foreground/80 data-active:text-foreground/80 [&>svg]:size-[17px]${pending ? " workspace-nav-pending" : ""}`}
                       >
                         <Icon aria-hidden="true" />
                         <span>{label}</span>
@@ -267,8 +300,22 @@ export function WorkspaceShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [collapsed, setCollapsed] = useState(initialSidebarCollapsed);
+
+  useEffect(() => {
+    setPendingHref(null);
+  }, [pathname]);
+
+  const handleSidebarNavigate = useCallback((href: string) => {
+    if (href === pathname) {
+      setPendingHref(null);
+      return;
+    }
+    setPendingHref(href);
+  }, [pathname]);
+
   const title = useMemo(() => {
     const section = pathname.split("/").filter(Boolean)[0] ?? "dashboard";
     return pageTitles[section] ?? "Visão geral";
@@ -329,7 +376,13 @@ export function WorkspaceShell({
           style={{ "--sidebar-width": "224px", "--sidebar-width-icon": "74px" } as CSSProperties}
           className="min-h-dvh"
         >
-          <AppSidebar store={store} pathname={pathname} role={role} />
+          <AppSidebar
+            store={store}
+            pathname={pathname}
+            role={role}
+            pendingHref={pendingHref}
+            onNavigate={handleSidebarNavigate}
+          />
           <SidebarInset className="min-h-dvh bg-[#f6f7f9] dark:bg-background">
             <ShellHeader
               store={store}
@@ -339,8 +392,13 @@ export function WorkspaceShell({
               onThemeChange={applyTheme}
               onLogout={logout}
             />
-            <div className="min-w-0 flex-1 px-5 py-6 sm:px-8 sm:py-8 xl:px-[34px]">
-              <PageTransition>{children}</PageTransition>
+            {pendingHref ? <span className="sr-only" role="status">Carregando página…</span> : null}
+            <div
+              className="relative min-w-0 flex-1 px-5 py-6 sm:px-8 sm:py-8 xl:px-[34px]"
+              aria-busy={pendingHref ? true : undefined}
+            >
+              <PageTransition isPending={Boolean(pendingHref)}>{children}</PageTransition>
+              {pendingHref ? <span className="workspace-page-loading-mask" aria-hidden="true" /> : null}
             </div>
           </SidebarInset>
         </SidebarProvider>
